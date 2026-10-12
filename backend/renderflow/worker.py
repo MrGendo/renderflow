@@ -113,6 +113,8 @@ def run_once(conn, settings: Settings, worker_id: str, loop_count: int = 0) -> b
             timeout_s=spec.timeout_s, faults=faults,
             upload_dir=os.path.join(settings.data_dir, "uploads", step["task_id"]),
             conn=conn,
+            lease_version=step["lease_version"],
+            worker_id=worker_id,
         )
         last_hb = {"at": 0.0}
 
@@ -128,6 +130,7 @@ def run_once(conn, settings: Settings, worker_id: str, loop_count: int = 0) -> b
             if dao.task_cancel_requested(conn, step["task_id"]):
                 raise StepCancelledError(f"任务已请求取消: {step['task_id']}")
 
+        ctx.on_tick_cb = on_tick  # 批次间隔的分片回调（心跳/取消/租约检查）
         result = executor.execute(ctx, on_tick=on_tick)
 
         if result.success:

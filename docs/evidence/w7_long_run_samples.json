@@ -1,0 +1,482 @@
+{
+  "task_id": "2d0ea8381adb4d398f47aa8b3908ab0b",
+  "samples": [
+    {
+      "t": "18:14:56",
+      "task": "RUNNING",
+      "batches_done": 14,
+      "step": {
+        "status": "RUNNING",
+        "worker_id": "MacBook-Pro.local:2122:4c508c4d",
+        "lease_version": 3,
+        "heartbeat_at": 1791800091.678166,
+        "lease_until": 1791800106.678166
+      },
+      "hb_age_s": 4.7,
+      "events": {
+        "BATCH_REUSED": 11,
+        "LEASE_EXPIRED": 2,
+        "STEP_FENCED": 1,
+        "STEP_RECOVERED": 2
+      }
+    },
+    {
+      "t": "18:15:56",
+      "task": "RUNNING",
+      "batches_done": 16,
+      "step": {
+        "status": "RUNNING",
+        "worker_id": "MacBook-Pro.local:2122:4c508c4d",
+        "lease_version": 3,
+        "heartbeat_at": 1791800152.158266,
+        "lease_until": 1791800167.158266
+      },
+      "hb_age_s": 4.2,
+      "events": {
+        "BATCH_REUSED": 11,
+        "LEASE_EXPIRED": 2,
+        "STEP_FENCED": 1,
+        "STEP_RECOVERED": 2
+      }
+    },
+    {
+      "t": "18:16:56",
+      "task": "RUNNING",
+      "batches_done": 18,
+      "step": {
+        "status": "RUNNING",
+        "worker_id": "MacBook-Pro.local:2122:4c508c4d",
+        "lease_version": 3,
+        "heartbeat_at": 1791800212.4937012,
+        "lease_until": 1791800227.4937012
+      },
+      "hb_age_s": 3.9,
+      "events": {
+        "BATCH_REUSED": 11,
+        "LEASE_EXPIRED": 2,
+        "STEP_FENCED": 1,
+        "STEP_RECOVERED": 2
+      }
+    },
+    {
+      "t": "18:17:56",
+      "task": "RUNNING",
+      "batches_done": 20,
+      "step": {
+        "status": "RUNNING",
+        "worker_id": "MacBook-Pro.local:2122:4c508c4d",
+        "lease_version": 3,
+        "heartbeat_at": 1791800272.8609002,
+        "lease_until": 1791800287.8609002
+      },
+      "hb_age_s": 3.5,
+      "events": {
+        "BATCH_REUSED": 11,
+        "LEASE_EXPIRED": 2,
+        "STEP_FENCED": 1,
+        "STEP_RECOVERED": 2
+      }
+    },
+    {
+      "t": "18:18:56",
+      "task": "RUNNING",
+      "batches_done": 22,
+      "step": {
+        "status": "RUNNING",
+        "worker_id": "MacBook-Pro.local:2122:4c508c4d",
+        "lease_version": 3,
+        "heartbeat_at": 1791800333.220813,
+        "lease_until": 1791800348.220813
+      },
+      "hb_age_s": 3.2,
+      "events": {
+        "BATCH_REUSED": 11,
+        "LEASE_EXPIRED": 2,
+        "STEP_FENCED": 1,
+        "STEP_RECOVERED": 2
+      }
+    },
+    {
+      "t": "18:19:56",
+      "task": "RUNNING",
+      "batches_done": 24,
+      "step": {
+        "status": "RUNNING",
+        "worker_id": "MacBook-Pro.local:2122:4c508c4d",
+        "lease_version": 3,
+        "heartbeat_at": 1791800393.965761,
+        "lease_until": 1791800408.965761
+      },
+      "hb_age_s": 2.4,
+      "events": {
+        "BATCH_REUSED": 11,
+        "LEASE_EXPIRED": 2,
+        "STEP_FENCED": 1,
+        "STEP_RECOVERED": 2
+      }
+    },
+    {
+      "t": "18:20:56",
+      "task": "RUNNING",
+      "batches_done": 26,
+      "step": {
+        "status": "RUNNING",
+        "worker_id": "MacBook-Pro.local:2122:4c508c4d",
+        "lease_version": 3,
+        "heartbeat_at": 1791800454.884725,
+        "lease_until": 1791800469.884725
+      },
+      "hb_age_s": 1.5,
+      "events": {
+        "BATCH_REUSED": 11,
+        "LEASE_EXPIRED": 2,
+        "STEP_FENCED": 1,
+        "STEP_RECOVERED": 2
+      }
+    },
+    {
+      "t": "18:21:56",
+      "task": "RUNNING",
+      "batches_done": 28,
+      "step": {
+        "status": "RUNNING",
+        "worker_id": "MacBook-Pro.local:2122:4c508c4d",
+        "lease_version": 3,
+        "heartbeat_at": 1791800515.32804,
+        "lease_until": 1791800530.32804
+      },
+      "hb_age_s": 1.1,
+      "events": {
+        "BATCH_REUSED": 11,
+        "LEASE_EXPIRED": 2,
+        "STEP_FENCED": 1,
+        "STEP_RECOVERED": 2
+      }
+    },
+    {
+      "t": "18:22:56",
+      "task": "RUNNING",
+      "batches_done": 30,
+      "step": {
+        "status": "RUNNING",
+        "worker_id": "MacBook-Pro.local:2122:4c508c4d",
+        "lease_version": 3,
+        "heartbeat_at": 1791800575.868803,
+        "lease_until": 1791800590.868803
+      },
+      "hb_age_s": 0.5,
+      "events": {
+        "BATCH_REUSED": 11,
+        "LEASE_EXPIRED": 2,
+        "STEP_FENCED": 1,
+        "STEP_RECOVERED": 2
+      }
+    },
+    {
+      "t": "18:23:56",
+      "task": "RUNNING",
+      "batches_done": 32,
+      "step": {
+        "status": "RUNNING",
+        "worker_id": "MacBook-Pro.local:2122:4c508c4d",
+        "lease_version": 3,
+        "heartbeat_at": 1791800636.1678588,
+        "lease_until": 1791800651.1678588
+      },
+      "hb_age_s": 0.2,
+      "events": {
+        "BATCH_REUSED": 11,
+        "LEASE_EXPIRED": 2,
+        "STEP_FENCED": 1,
+        "STEP_RECOVERED": 2
+      }
+    },
+    {
+      "t": "18:24:56",
+      "task": "RUNNING",
+      "batches_done": 34,
+      "step": {
+        "status": "RUNNING",
+        "worker_id": "MacBook-Pro.local:2122:4c508c4d",
+        "lease_version": 3,
+        "heartbeat_at": 1791800691.592266,
+        "lease_until": 1791800706.592266
+      },
+      "hb_age_s": 4.8,
+      "events": {
+        "BATCH_REUSED": 11,
+        "LEASE_EXPIRED": 2,
+        "STEP_FENCED": 1,
+        "STEP_RECOVERED": 2
+      }
+    },
+    {
+      "t": "18:25:56",
+      "task": "RUNNING",
+      "batches_done": 36,
+      "step": {
+        "status": "RUNNING",
+        "worker_id": "MacBook-Pro.local:2122:4c508c4d",
+        "lease_version": 3,
+        "heartbeat_at": 1791800752.0576682,
+        "lease_until": 1791800767.0576682
+      },
+      "hb_age_s": 4.4,
+      "events": {
+        "BATCH_REUSED": 11,
+        "LEASE_EXPIRED": 2,
+        "STEP_FENCED": 1,
+        "STEP_RECOVERED": 2
+      }
+    },
+    {
+      "t": "18:26:56",
+      "task": "RUNNING",
+      "batches_done": 38,
+      "step": {
+        "status": "RUNNING",
+        "worker_id": "MacBook-Pro.local:2122:4c508c4d",
+        "lease_version": 3,
+        "heartbeat_at": 1791800812.533792,
+        "lease_until": 1791800827.533792
+      },
+      "hb_age_s": 3.9,
+      "events": {
+        "BATCH_REUSED": 11,
+        "LEASE_EXPIRED": 2,
+        "STEP_FENCED": 1,
+        "STEP_RECOVERED": 2
+      }
+    },
+    {
+      "t": "18:27:56",
+      "task": "RUNNING",
+      "batches_done": 40,
+      "step": {
+        "status": "RUNNING",
+        "worker_id": "MacBook-Pro.local:2122:4c508c4d",
+        "lease_version": 3,
+        "heartbeat_at": 1791800872.991056,
+        "lease_until": 1791800887.991056
+      },
+      "hb_age_s": 3.5,
+      "events": {
+        "BATCH_REUSED": 11,
+        "LEASE_EXPIRED": 2,
+        "STEP_FENCED": 1,
+        "STEP_RECOVERED": 2
+      }
+    },
+    {
+      "t": "18:28:56",
+      "task": "RUNNING",
+      "batches_done": 42,
+      "step": {
+        "status": "RUNNING",
+        "worker_id": "MacBook-Pro.local:2122:4c508c4d",
+        "lease_version": 3,
+        "heartbeat_at": 1791800933.643201,
+        "lease_until": 1791800948.643201
+      },
+      "hb_age_s": 2.8,
+      "events": {
+        "BATCH_REUSED": 11,
+        "LEASE_EXPIRED": 2,
+        "STEP_FENCED": 1,
+        "STEP_RECOVERED": 2
+      }
+    },
+    {
+      "t": "18:29:56",
+      "task": "RUNNING",
+      "batches_done": 44,
+      "step": {
+        "status": "RUNNING",
+        "worker_id": "MacBook-Pro.local:2122:4c508c4d",
+        "lease_version": 3,
+        "heartbeat_at": 1791800994.023386,
+        "lease_until": 1791801009.023386
+      },
+      "hb_age_s": 2.4,
+      "events": {
+        "BATCH_REUSED": 11,
+        "LEASE_EXPIRED": 2,
+        "STEP_FENCED": 1,
+        "STEP_RECOVERED": 2
+      }
+    },
+    {
+      "t": "18:30:56",
+      "task": "RUNNING",
+      "batches_done": 46,
+      "step": {
+        "status": "RUNNING",
+        "worker_id": "MacBook-Pro.local:2122:4c508c4d",
+        "lease_version": 3,
+        "heartbeat_at": 1791801054.379644,
+        "lease_until": 1791801069.379644
+      },
+      "hb_age_s": 2.1,
+      "events": {
+        "BATCH_REUSED": 11,
+        "LEASE_EXPIRED": 2,
+        "STEP_FENCED": 1,
+        "STEP_RECOVERED": 2
+      }
+    },
+    {
+      "t": "18:31:56",
+      "task": "RUNNING",
+      "batches_done": 48,
+      "step": {
+        "status": "RUNNING",
+        "worker_id": "MacBook-Pro.local:2122:4c508c4d",
+        "lease_version": 3,
+        "heartbeat_at": 1791801114.8490329,
+        "lease_until": 1791801129.8490329
+      },
+      "hb_age_s": 1.6,
+      "events": {
+        "BATCH_REUSED": 11,
+        "LEASE_EXPIRED": 2,
+        "STEP_FENCED": 1,
+        "STEP_RECOVERED": 2
+      }
+    },
+    {
+      "t": "18:32:56",
+      "task": "RUNNING",
+      "batches_done": 50,
+      "step": {
+        "status": "RUNNING",
+        "worker_id": "MacBook-Pro.local:2122:4c508c4d",
+        "lease_version": 3,
+        "heartbeat_at": 1791801175.315068,
+        "lease_until": 1791801190.315068
+      },
+      "hb_age_s": 1.2,
+      "events": {
+        "BATCH_REUSED": 11,
+        "LEASE_EXPIRED": 2,
+        "STEP_FENCED": 1,
+        "STEP_RECOVERED": 2
+      }
+    },
+    {
+      "t": "18:33:56",
+      "task": "RUNNING",
+      "batches_done": 52,
+      "step": {
+        "status": "RUNNING",
+        "worker_id": "MacBook-Pro.local:2122:4c508c4d",
+        "lease_version": 3,
+        "heartbeat_at": 1791801235.925539,
+        "lease_until": 1791801250.925539
+      },
+      "hb_age_s": 0.6,
+      "events": {
+        "BATCH_REUSED": 11,
+        "LEASE_EXPIRED": 2,
+        "STEP_FENCED": 1,
+        "STEP_RECOVERED": 2
+      }
+    },
+    {
+      "t": "18:34:56",
+      "task": "RUNNING",
+      "batches_done": 54,
+      "step": {
+        "status": "RUNNING",
+        "worker_id": "MacBook-Pro.local:2122:4c508c4d",
+        "lease_version": 3,
+        "heartbeat_at": 1791801291.542785,
+        "lease_until": 1791801306.542785
+      },
+      "hb_age_s": 5.0,
+      "events": {
+        "BATCH_REUSED": 11,
+        "LEASE_EXPIRED": 2,
+        "STEP_FENCED": 1,
+        "STEP_RECOVERED": 2
+      }
+    },
+    {
+      "t": "18:35:56",
+      "task": "RUNNING",
+      "batches_done": 56,
+      "step": {
+        "status": "RUNNING",
+        "worker_id": "MacBook-Pro.local:2122:4c508c4d",
+        "lease_version": 3,
+        "heartbeat_at": 1791801352.0196779,
+        "lease_until": 1791801367.0196779
+      },
+      "hb_age_s": 4.5,
+      "events": {
+        "BATCH_REUSED": 11,
+        "LEASE_EXPIRED": 2,
+        "STEP_FENCED": 1,
+        "STEP_RECOVERED": 2
+      }
+    },
+    {
+      "t": "18:36:56",
+      "task": "RUNNING",
+      "batches_done": 58,
+      "step": {
+        "status": "RUNNING",
+        "worker_id": "MacBook-Pro.local:2122:4c508c4d",
+        "lease_version": 3,
+        "heartbeat_at": 1791801412.5981371,
+        "lease_until": 1791801427.5981371
+      },
+      "hb_age_s": 4.0,
+      "events": {
+        "BATCH_REUSED": 11,
+        "LEASE_EXPIRED": 2,
+        "STEP_FENCED": 1,
+        "STEP_RECOVERED": 2
+      }
+    },
+    {
+      "t": "18:37:56",
+      "task": "RUNNING",
+      "batches_done": 60,
+      "step": {
+        "status": "RUNNING",
+        "worker_id": "MacBook-Pro.local:2122:4c508c4d",
+        "lease_version": 3,
+        "heartbeat_at": 1791801473.150037,
+        "lease_until": 1791801488.150037
+      },
+      "hb_age_s": 3.4,
+      "events": {
+        "BATCH_REUSED": 11,
+        "LEASE_EXPIRED": 2,
+        "STEP_FENCED": 1,
+        "STEP_RECOVERED": 2
+      }
+    },
+    {
+      "t": "18:38:56",
+      "task": "SUCCEEDED",
+      "batches_done": 61,
+      "step": {
+        "status": "SUCCEEDED",
+        "worker_id": "MacBook-Pro.local:2122:4c508c4d",
+        "lease_version": 3,
+        "heartbeat_at": null,
+        "lease_until": null
+      },
+      "hb_age_s": null,
+      "events": {
+        "BATCH_REUSED": 11,
+        "LEASE_EXPIRED": 2,
+        "STEP_FENCED": 1,
+        "STEP_RECOVERED": 2
+      }
+    }
+  ],
+  "terminal": "SUCCEEDED",
+  "finished_at": "2026-10-12 18:38:56"
+}

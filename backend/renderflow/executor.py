@@ -26,6 +26,21 @@ from .exceptions import LeaseLostError, StepCancelledError
 _TICK_S = 0.1  # 分片时长：100ms，片间隙是心跳/取消/中止检查点
 
 
+def _slice_wait(seconds: float, on_tick) -> None:
+    """分片等待：长间隔拆成 100ms 片，每片回调 on_tick（心跳/取消/租约检查点）。
+
+    on_tick 抛 LeaseLostError/StepCancelledError 时直接上抛——调用方（execute）视为控制流信号。
+    """
+    deadline = time.monotonic() + seconds
+    while True:
+        remain = deadline - time.monotonic()
+        if remain <= 0:
+            return
+        time.sleep(min(_TICK_S, remain))
+        if on_tick:
+            on_tick()
+
+
 @dataclass
 class StepContext:
     task_id: str
@@ -42,6 +57,9 @@ class StepContext:
     faults: dict = field(default_factory=dict)  # 该步骤的故障注入配置
     upload_dir: str = ""  # 任务上传的真实素材目录（data/uploads/<task_id>）
     conn: "sqlite3.Connection | None" = None  # DB 连接（批次检查点用；进程内 Worker 传入）
+    lease_version: int = 0  # 本次执行的 fencing token（批次写入前断言租约仍属于本尝试）
+    worker_id: str = ""
+    on_tick_cb: object = None  # execute 注入的分片回调（批次间隔心跳用；避免改 _mock_payload 签名）
 
 
 def _dao_batch_get(ctx: "StepContext", batch_no: int):
@@ -68,6 +86,25 @@ def _batch_event(ctx: "StepContext", event_type: str, batch_no: int, **detail) -
         ))
     except Exception:
         pass  # 事件尽力而为：批次事务本身才是关键路径
+
+
+def _assert_lease(ctx: "StepContext") -> None:
+    """批次写入前的 fencing 断言：步骤仍属 RUNNING 且租约版本未变。
+
+    长任务（分钟级批次）里旧进程可能被暂停数分钟后唤醒（网络挂起等价物）——
+    若步骤已被新 Worker 回收（lease_version 推进），本尝试必须立即放弃，
+    不得再写任何批次检查点（否则会用旧结果覆盖新执行者的状态）。
+    """
+    if ctx.conn is None or ctx.lease_version == 0:
+        return  # 单元测试直调等场景无租约上下文，跳过
+    row = ctx.conn.execute(
+        "SELECT status, lease_version FROM task_steps WHERE step_id = ?", (ctx.step_id,)
+    ).fetchone()
+    if row is None or row["status"] != "RUNNING" or row["lease_version"] != ctx.lease_version:
+        raise LeaseLostError(
+            f"批次写入被 fencing 拒绝: step 已被回收或提交"
+            f"（当前 lease_version={row['lease_version'] if row else 'N/A'}, 本尝试={ctx.lease_version}）"
+        )
 
 
 @dataclass
@@ -110,6 +147,7 @@ def _mock_payload(ctx: StepContext) -> dict:
         reused, executed = [], []
         for idx, name in enumerate(names):
             bno = idx + 1
+            _assert_lease(ctx)  # 每批开始前确认租约仍属本尝试（长任务防旧进程复活写入）
             # ── 批次级故障注入（生效门在 API 层；显式标记的人为故障演示机制）──
             flt = ctx.faults or {}
             fail_at = int(flt.get("fail_at_batch", 0))
@@ -166,8 +204,9 @@ def _mock_payload(ctx: StepContext) -> dict:
             executed.append(bno)
             _batch_event(ctx, "BATCH_DONE", bno, input_name=name)
             if batch_pause_ms > 0 and idx < len(names) - 1:
-                # 演示模式的真实工作量间隔（非故障机制，让进度肉眼可跟随）
-                time.sleep(batch_pause_ms / 1000.0)
+                # 演示模式的批次间隔：分片等待（100ms/片），每片走 on_tick——
+                # 心跳续租/取消检查点/租约丢失中止全部生效（长任务不允许无心跳裸 sleep）
+                _slice_wait(batch_pause_ms / 1000.0, ctx.on_tick_cb)
         sizes = [min(s["bytes"] / 65536.0, 1.0) for s in stats] or [0.5]
         save("assets_overview.png", artifacts.bar_chart_png(sizes), "素材大小总览")
         return {"asset_names": names, "asset_count": len(names), "asset_stats": stats,
