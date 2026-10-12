@@ -1,8 +1,25 @@
 # 本地运行证据（Local Run Evidence）
 
-生成时间：2026-10-12 14:4x（CST）｜生成方式：真实进程运行 + CDP 无头浏览器截图，非 mock。
+生成时间：2026-10-12 14:4x 与 15:2x-15:3x（CST）｜生成方式：真实进程运行 + CDP 无头浏览器截图，非 mock。
+
+## 长时间运行案例（新增，最有代表性）
+
+**docs/evidence/long_task_recovery_case.json + 07_long_task_recovery_detail.png**
+任务 433a4498：6 步 × 15s（约 90s 工作量），生产默认租约 15s / 心跳 5s，总耗时 389s。
+
+| 时刻 | 真实事件 |
+|---|---|
+| 15:23:41 | parse_assets RUNNING；两次采样 6s 间隔确认心跳续租生效（heartbeat_at/lease_until 前进） |
+| 15:24:11 | generate_clips 执行 30s 时对 Worker 进程真实 SIGKILL |
+| 15:24:26 | 租约到期（15s 宽限期不误杀——不凭单次心跳缺失判死） |
+| 15:24:26→15:29:34 | 边界案例：全机无存活 Worker，任务停在 RUNNING 2/6——状态可查、已成功的 parse_assets/analyze_scenes 零重跑；恢复需要至少一个存活 Worker 进程（如实记录） |
+| 15:29:34 | 重启 Worker → 立即回收：LEASE_EXPIRED×1 + STEP_RECOVERED×1；悬挂 attempt#1 补记 FAILED/WORKER_INTERRUPTED（298s 含悬挂期） |
+| 15:29:34-15:30:10 | attempt#2 重执行 15s 成功 → 后续 3 步续跑 → SUCCEEDED 6/6 |
+
+JSON 内含完整事件流（22 条）、generate_clips 双 attempt 历史、各步骤 worker/lease_version 明细。
 
 ## 运行形态
+
 
 生产单域名形态：`uvicorn renderflow.api:app --port 8920`（RENDERFLOW_STATIC_DIR 托管前端 dist）+ 独立 `python -m renderflow.worker` 进程。SQLite/产物在 /tmp/rf_localrun（当次运行目录）。
 
@@ -29,6 +46,7 @@
 | 04_task_running_detail.png | 运行中任务详情：DAG 节点黄/绿状态混合（真实执行中间态） |
 | 05_recovered_attempts_dark.png | SIGKILL 恢复任务的 generate_audio 尝试历史展开（含 WORKER_INTERRUPTED） |
 | 06_task_list_dark.png | 任务列表（暗色） |
+| 07_long_task_recovery_detail.png | 长任务案例详情页：generate_clips 双 attempt（WORKER_INTERRUPTED → SUCCEEDED）展开 |
 
 ## 日志与快照
 

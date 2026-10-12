@@ -1,0 +1,393 @@
+{
+  "case": "long-running task with real SIGKILL mid-execution, lease expiry, worker restart recovery",
+  "task_id": "433a44986fd1461ca3d3f7247886469f",
+  "config": {
+    "steps": 6,
+    "step_duration": "15s each",
+    "lease_seconds": 15,
+    "heartbeat_seconds": 5
+  },
+  "timeline_summary": {
+    "15:23:40": "task created",
+    "15:23:41": "parse_assets RUNNING, heartbeat_at=15:23:41 lease_until=15:23:56",
+    "15:23:46": "heartbeat renewed (heartbeat_at advanced, lease_until=15:24:01) — renewal works",
+    "15:24:11": "generate_clips RUNNING (30s into execution) -> real SIGKILL to worker pid 76397",
+    "15:24:26": "lease expired (15s grace window honoured, no premature reclaim)",
+    "15:24:26~15:29:34": "NO worker alive on the machine: task stays RUNNING 2/6, state queryable, succeeded steps NOT re-executed — boundary case: recovery requires at least one live worker process",
+    "15:29:34": "new worker started -> immediate reclaim: LEASE_EXPIRED x1 + STEP_RECOVERED x1; stale attempt#1 closed as FAILED/WORKER_INTERRUPTED (duration 298s incl. hang)",
+    "15:29:34-15:30:10": "attempt#2 re-executed generate_clips (15s), remaining 3 steps continued",
+    "15:30:10": "task SUCCEEDED 6/6, total 389s"
+  },
+  "final": {
+    "status": "SUCCEEDED",
+    "succeeded_steps": "6/6",
+    "total_seconds": 389,
+    "parse_assets_attempts": 1,
+    "generate_clips_attempts": [
+      {
+        "attempt_no": 1,
+        "status": "FAILED",
+        "error_code": "WORKER_INTERRUPTED",
+        "duration_ms": 298384,
+        "worker": "MacBook-Pro.local:76397:1e9f5668"
+      },
+      {
+        "attempt_no": 2,
+        "status": "SUCCEEDED",
+        "error_code": null,
+        "duration_ms": 15007,
+        "worker": "MacBook-Pro.local:77753:41c363b6"
+      }
+    ],
+    "events_count": {
+      "TASK_CREATED": 1,
+      "STEP_CLAIMED": 6,
+      "STEP_HEARTBEAT": 0,
+      "LEASE_EXPIRED": 1,
+      "STEP_RECOVERED": 1,
+      "STEP_SUCCEEDED": 6,
+      "TASK_SUCCEEDED": 1
+    }
+  },
+  "raw": {
+    "task": {
+      "status": "SUCCEEDED",
+      "progress_percent": 100,
+      "created_at": {
+        "iso": "2026-10-12T07:23:40.841Z",
+        "epoch": 1791789820.841835
+      },
+      "started_at": {
+        "iso": "2026-10-12T07:23:41.074Z",
+        "epoch": 1791789821.074579
+      },
+      "finished_at": {
+        "iso": "2026-10-12T07:30:09.516Z",
+        "epoch": 1791790209.516665
+      },
+      "error_summary": null,
+      "cancel_requested": false
+    },
+    "steps": [
+      {
+        "step_type": "parse_assets",
+        "status": "SUCCEEDED",
+        "attempt_count": 1,
+        "started_at": "2026-10-12T07:23:41.074Z",
+        "finished_at": "2026-10-12T07:23:56.084Z",
+        "worker_id": "MacBook-Pro.local:76397:1e9f5668",
+        "lease_version": 1
+      },
+      {
+        "step_type": "analyze_scenes",
+        "status": "SUCCEEDED",
+        "attempt_count": 1,
+        "started_at": "2026-10-12T07:23:56.086Z",
+        "finished_at": "2026-10-12T07:24:11.094Z",
+        "worker_id": "MacBook-Pro.local:76397:1e9f5668",
+        "lease_version": 1
+      },
+      {
+        "step_type": "generate_clips",
+        "status": "SUCCEEDED",
+        "attempt_count": 2,
+        "started_at": "2026-10-12T07:24:11.095Z",
+        "finished_at": "2026-10-12T07:29:24.487Z",
+        "worker_id": "MacBook-Pro.local:77753:41c363b6",
+        "lease_version": 2
+      },
+      {
+        "step_type": "generate_audio",
+        "status": "SUCCEEDED",
+        "attempt_count": 1,
+        "started_at": "2026-10-12T07:29:24.489Z",
+        "finished_at": "2026-10-12T07:29:39.499Z",
+        "worker_id": "MacBook-Pro.local:77753:41c363b6",
+        "lease_version": 1
+      },
+      {
+        "step_type": "compose_video",
+        "status": "SUCCEEDED",
+        "attempt_count": 1,
+        "started_at": "2026-10-12T07:29:39.500Z",
+        "finished_at": "2026-10-12T07:29:54.509Z",
+        "worker_id": "MacBook-Pro.local:77753:41c363b6",
+        "lease_version": 1
+      },
+      {
+        "step_type": "export_result",
+        "status": "SUCCEEDED",
+        "attempt_count": 1,
+        "started_at": "2026-10-12T07:29:54.511Z",
+        "finished_at": "2026-10-12T07:30:09.516Z",
+        "worker_id": "MacBook-Pro.local:77753:41c363b6",
+        "lease_version": 1
+      }
+    ],
+    "generate_clips_attempts": [
+      {
+        "attempt_id": "f3da8e991dcb4be5b148c4f81d21613b",
+        "step_id": "99c58da2bbad4a3ebf470d8c50b5d9bf",
+        "attempt_no": 1,
+        "worker_id": "MacBook-Pro.local:76397:1e9f5668",
+        "status": "FAILED",
+        "started_at": {
+          "iso": "2026-10-12T07:24:11.095Z",
+          "epoch": 1791789851.0958562
+        },
+        "finished_at": {
+          "iso": "2026-10-12T07:29:09.480Z",
+          "epoch": 1791790149.48058
+        },
+        "duration_ms": 298384,
+        "error_code": "WORKER_INTERRUPTED",
+        "error_message": "租约过期被回收: 原执行者 MacBook-Pro.local:76397:1e9f5668",
+        "log_ref": null,
+        "output_ref": null
+      },
+      {
+        "attempt_id": "121609f12a6643f9a8a17a2caee74152",
+        "step_id": "99c58da2bbad4a3ebf470d8c50b5d9bf",
+        "attempt_no": 2,
+        "worker_id": "MacBook-Pro.local:77753:41c363b6",
+        "status": "SUCCEEDED",
+        "started_at": {
+          "iso": "2026-10-12T07:29:09.480Z",
+          "epoch": 1791790149.48058
+        },
+        "finished_at": {
+          "iso": "2026-10-12T07:29:24.487Z",
+          "epoch": 1791790164.487956
+        },
+        "duration_ms": 15007,
+        "error_code": null,
+        "error_message": null,
+        "log_ref": "tasks/433a44986fd1461ca3d3f7247886469f/steps/generate_clips/attempt_2/run.log",
+        "output_ref": "tasks/433a44986fd1461ca3d3f7247886469f/steps/generate_clips/attempt_2/output.json"
+      }
+    ],
+    "events": [
+      {
+        "t": "2026-10-12T07:23:40.841Z",
+        "type": "TASK_CREATED",
+        "step": "",
+        "worker": "",
+        "detail": {
+          "step_count": 6,
+          "workflow_version": "1.0.0"
+        }
+      },
+      {
+        "t": "2026-10-12T07:23:41.074Z",
+        "type": "STEP_CLAIMED",
+        "step": "1c978093",
+        "worker": "MacBook-Pro.local:7639",
+        "detail": {
+          "attempt_no": 1,
+          "lease_version": 1
+        }
+      },
+      {
+        "t": "2026-10-12T07:23:41.074Z",
+        "type": "STEP_STARTED",
+        "step": "1c978093",
+        "worker": "MacBook-Pro.local:7639",
+        "detail": {
+          "attempt_no": 1,
+          "lease_version": 1
+        }
+      },
+      {
+        "t": "2026-10-12T07:23:56.084Z",
+        "type": "STEP_SUCCEEDED",
+        "step": "1c978093",
+        "worker": "MacBook-Pro.local:7639",
+        "detail": {
+          "output_checksum": "fa71291d2bdbb181097424b505f006aefe1718b388bd604b7848ba6dd6573fe3",
+          "output_ref": "tasks/433a44986fd1461ca3d3f7247886469f/steps/parse_assets/attempt_1/output.json"
+        }
+      },
+      {
+        "t": "2026-10-12T07:23:56.086Z",
+        "type": "STEP_CLAIMED",
+        "step": "b8b93e08",
+        "worker": "MacBook-Pro.local:7639",
+        "detail": {
+          "attempt_no": 1,
+          "lease_version": 1
+        }
+      },
+      {
+        "t": "2026-10-12T07:23:56.086Z",
+        "type": "STEP_STARTED",
+        "step": "b8b93e08",
+        "worker": "MacBook-Pro.local:7639",
+        "detail": {
+          "attempt_no": 1,
+          "lease_version": 1
+        }
+      },
+      {
+        "t": "2026-10-12T07:24:11.094Z",
+        "type": "STEP_SUCCEEDED",
+        "step": "b8b93e08",
+        "worker": "MacBook-Pro.local:7639",
+        "detail": {
+          "output_checksum": "c94db83c230dcc22510bb97e7c0563575c9d01a50f6ee949f6971795b8e47d60",
+          "output_ref": "tasks/433a44986fd1461ca3d3f7247886469f/steps/analyze_scenes/attempt_1/output.json"
+        }
+      },
+      {
+        "t": "2026-10-12T07:24:11.095Z",
+        "type": "STEP_CLAIMED",
+        "step": "99c58da2",
+        "worker": "MacBook-Pro.local:7639",
+        "detail": {
+          "attempt_no": 1,
+          "lease_version": 1
+        }
+      },
+      {
+        "t": "2026-10-12T07:24:11.095Z",
+        "type": "STEP_STARTED",
+        "step": "99c58da2",
+        "worker": "MacBook-Pro.local:7639",
+        "detail": {
+          "attempt_no": 1,
+          "lease_version": 1
+        }
+      },
+      {
+        "t": "2026-10-12T07:29:09.480Z",
+        "type": "LEASE_EXPIRED",
+        "step": "99c58da2",
+        "worker": "MacBook-Pro.local:7639",
+        "detail": {
+          "expired_lease_until": 1791789866.202465,
+          "recovered_by": "MacBook-Pro.local:77753:41c363b6"
+        }
+      },
+      {
+        "t": "2026-10-12T07:29:09.480Z",
+        "type": "STEP_RECOVERED",
+        "step": "99c58da2",
+        "worker": "MacBook-Pro.local:7775",
+        "detail": {
+          "attempt_no": 2,
+          "lease_version": 2
+        }
+      },
+      {
+        "t": "2026-10-12T07:29:24.487Z",
+        "type": "STEP_SUCCEEDED",
+        "step": "99c58da2",
+        "worker": "MacBook-Pro.local:7775",
+        "detail": {
+          "output_checksum": "8eeab7459fbdfdd06759e0f7d5420199db2ab63fd7063dc209ba2a964dcf8405",
+          "output_ref": "tasks/433a44986fd1461ca3d3f7247886469f/steps/generate_clips/attempt_2/output.json"
+        }
+      },
+      {
+        "t": "2026-10-12T07:29:24.489Z",
+        "type": "STEP_CLAIMED",
+        "step": "5266a872",
+        "worker": "MacBook-Pro.local:7775",
+        "detail": {
+          "attempt_no": 1,
+          "lease_version": 1
+        }
+      },
+      {
+        "t": "2026-10-12T07:29:24.489Z",
+        "type": "STEP_STARTED",
+        "step": "5266a872",
+        "worker": "MacBook-Pro.local:7775",
+        "detail": {
+          "attempt_no": 1,
+          "lease_version": 1
+        }
+      },
+      {
+        "t": "2026-10-12T07:29:39.499Z",
+        "type": "STEP_SUCCEEDED",
+        "step": "5266a872",
+        "worker": "MacBook-Pro.local:7775",
+        "detail": {
+          "output_checksum": "06cf5f5df0524b3aeeebb8211e752ab7882e47138db5a562d9cea59b8c1b095f",
+          "output_ref": "tasks/433a44986fd1461ca3d3f7247886469f/steps/generate_audio/attempt_1/output.json"
+        }
+      },
+      {
+        "t": "2026-10-12T07:29:39.500Z",
+        "type": "STEP_CLAIMED",
+        "step": "69f0856d",
+        "worker": "MacBook-Pro.local:7775",
+        "detail": {
+          "attempt_no": 1,
+          "lease_version": 1
+        }
+      },
+      {
+        "t": "2026-10-12T07:29:39.500Z",
+        "type": "STEP_STARTED",
+        "step": "69f0856d",
+        "worker": "MacBook-Pro.local:7775",
+        "detail": {
+          "attempt_no": 1,
+          "lease_version": 1
+        }
+      },
+      {
+        "t": "2026-10-12T07:29:54.509Z",
+        "type": "STEP_SUCCEEDED",
+        "step": "69f0856d",
+        "worker": "MacBook-Pro.local:7775",
+        "detail": {
+          "output_checksum": "015e38ead3a1b88145c5f5494c45f0c595ac8a307b43f5fd10ef33cd78798ad4",
+          "output_ref": "tasks/433a44986fd1461ca3d3f7247886469f/steps/compose_video/attempt_1/output.json"
+        }
+      },
+      {
+        "t": "2026-10-12T07:29:54.511Z",
+        "type": "STEP_CLAIMED",
+        "step": "00da05b3",
+        "worker": "MacBook-Pro.local:7775",
+        "detail": {
+          "attempt_no": 1,
+          "lease_version": 1
+        }
+      },
+      {
+        "t": "2026-10-12T07:29:54.511Z",
+        "type": "STEP_STARTED",
+        "step": "00da05b3",
+        "worker": "MacBook-Pro.local:7775",
+        "detail": {
+          "attempt_no": 1,
+          "lease_version": 1
+        }
+      },
+      {
+        "t": "2026-10-12T07:30:09.516Z",
+        "type": "STEP_SUCCEEDED",
+        "step": "00da05b3",
+        "worker": "MacBook-Pro.local:7775",
+        "detail": {
+          "output_checksum": "532dc48e869ac480e289127d8252e30da2da7f4cf947a1f64b1abb3bb38070e5",
+          "output_ref": "tasks/433a44986fd1461ca3d3f7247886469f/steps/export_result/attempt_1/output.json"
+        }
+      },
+      {
+        "t": "2026-10-12T07:30:09.516Z",
+        "type": "TASK_SUCCEEDED",
+        "step": "",
+        "worker": "",
+        "detail": {
+          "error_summary": null,
+          "progress_percent": 100,
+          "reason_code": "SUCCEEDED"
+        }
+      }
+    ]
+  }
+}
