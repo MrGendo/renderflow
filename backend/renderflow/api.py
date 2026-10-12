@@ -139,6 +139,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="RenderFlow API", version="0.1.0", lifespan=lifespan)
 
+    # 生产单域名部署：RENDERFLOW_STATIC_DIR 指向前端构建产物目录时托管之
+    # （SPA fallback 到 index.html；未设置时完全不启用，不影响开发模式）
+    # 注意：用 catch-all 路由而非 mount("/")，避免吃掉 /api/* 路由
+    import os
+    static_dir = os.environ.get("RENDERFLOW_STATIC_DIR") or getattr(st, "static_dir", None)
+
     @app.exception_handler(ApiError)
     async def _api_error(_req: Request, exc: ApiError):
         return JSONResponse(status_code=exc.status_code, content=err(exc.code, exc.message))
@@ -278,6 +284,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return ok({"status": "ready"})
         except sqlite3.Error as e:
             return JSONResponse(status_code=503, content=err("RESOURCE_UNAVAILABLE", f"数据库未就绪: {e}"))
+
+    # SPA 静态托管（catch-all，注册在全部 API 路由之后；未配置 static_dir 时 404）
+    if static_dir and os.path.isdir(static_dir):
+        from fastapi.responses import FileResponse
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        def spa(full_path: str):
+            candidate = os.path.normpath(os.path.join(static_dir, full_path))
+            # 防目录穿越：必须落在 static_dir 内
+            if (candidate == static_dir or candidate.startswith(static_dir + os.sep)) and os.path.isfile(candidate):
+                return FileResponse(candidate)
+            return FileResponse(os.path.join(static_dir, "index.html"))
 
     return app
 

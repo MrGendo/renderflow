@@ -2,7 +2,13 @@
 
 动画素材处理场景的任务管线：任务由多个耗时步骤组成，单步失败可重试、Worker 进程中断可恢复、步骤结果可缓存复用，全程可观测。AI 应用开发岗位笔试项目（任务管线可观测方向）。
 
+**公开仓库**：https://github.com/MrGendo/renderflow
+**交付说明**：[SUBMISSION.md](SUBMISSION.md)（评审入口：设计取舍 / 真实性声明 / 测试与时间记录）
+**公网 Demo**：待部署（部署配置 render.yaml + Dockerfile 已就绪，所需操作见 SUBMISSION.md §10）
+**API 文档**（本地启动后）：http://127.0.0.1:8900/api/docs
+
 > 状态标记：✅ 已实现并有自动化测试覆盖 | 🧪 已实现（演示脚本/冒烟验证）| 📋 仅有设计方案（未实现）
+> 一键验证：`make install && make test && make demo-all`
 
 ## 1. 背景与解决的问题
 
@@ -156,11 +162,7 @@ Token 消耗较多的部分：W2（长任务书+多轮测试修复循环，cache
 
 ## 14. 公网部署步骤（清单）
 
-1. 服务器装 Python3.11+/Node20+，clone 仓库
-2. cp .env.example .env（生产务必 RENDERFLOW_ALLOW_FAULT_INJECTION=0）
-3. make install && make test
-4. uvicorn 起后端（--host 0.0.0.0 --port 8900，建议 systemd/supervisor 托管 + Nginx TLS 反代）
-5. Worker 独立 systemd unit（可多实例）
-6. 前端 npm run build 后 dist/ 交 Nginx 托管，/api 反代到 8900
-7. data/ 目录（SQLite+产物）挂持久盘并纳入备份
-8. 验证 /api/ready 200 + 提交一个测试任务跑通（部署后必做：kill -9 Worker 验证恢复，README §8 demo-3 即验证脚本）
+方案 A（推荐，Render Blueprint）：Render.com 控制台 New → Blueprint → 导入本仓库——render.yaml 自动创建单服务（Docker：API+独立 Worker 进程）+ 1GB 持久盘 /data（SQLite+产物），健康检查 /api/health，ALLOW_FAULT_INJECTION=0。
+方案 B（任意容器平台）：docker build -t renderflow . && docker run -p 10000:10000 -v rfdata:/data renderflow（Dockerfile 多阶段构建：前端产物由 FastAPI 托管，单域名免 CORS）。
+验证清单：/api/ready 200 → 前端首页可开 → 提交任务跑通 → 容器内 kill Worker 进程验证恢复（对应 demo-3 场景）。
+注意：本 MVP 无多用户鉴权，公网演示请用隔离环境与最小数据，不要开放生产数据写入。

@@ -1,0 +1,35 @@
+# RenderFlow 公网部署配置（Render.com）
+# 架构适配说明：SQLite 要求 Web 与 Worker 共享同一文件系统，因此采用
+# 单个 Web Service 内运行两个独立进程（uvicorn + worker，supervisor 式启动），
+# 并挂载持久磁盘 /data 保存 SQLite 库与任务产物。
+# 这满足"Worker 是独立进程、不依赖 Web 请求线程"的要求；
+# 代价是无法独立扩缩 Worker（见 SUBMISSION.md 已知限制）。
+services:
+  - type: web
+    name: renderflow
+    runtime: docker
+    plan: starter
+    region: singapore
+    healthCheckPath: /api/health
+    autoDeploy: true
+    disk:
+      name: renderflow-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: RENDERFLOW_DB_PATH
+        value: /data/renderflow.db
+      - key: RENDERFLOW_DATA_DIR
+        value: /data
+      - key: RENDERFLOW_LOG_DIR
+        value: /data/logs
+      - key: RENDERFLOW_ALLOW_FAULT_INJECTION
+        value: "0"        # 生产禁用故障注入
+      - key: RENDERFLOW_POLL_INTERVAL_MS
+        value: "300"
+      - key: RENDERFLOW_LEASE_SECONDS
+        value: "15"
+      - key: RENDERFLOW_HEARTBEAT_SECONDS
+        value: "5"
+      - key: PYTHONUNBUFFERED
+        value: "1"
