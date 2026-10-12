@@ -2,6 +2,13 @@
 
 生成时间：2026-10-12 14:4x ~ 16:4x（CST）｜生成方式：真实进程运行 + CDP 无头浏览器截图，非 mock。
 
+## 真实动漫素材全链路（Safebooru 真图 + 真实 GLM，已验证）
+
+**anime_llm_evidence.json + 12_anime_llm_detail.png + 13_anime_llm_report.png + anime_llm_report_sample.html**
+任务 4f23c1d6（2026-10-12 16:57）：从 Safebooru 收集 3 张真实动漫图（夜晚城市 PNG 1800×1800 / 黄昏天空 JPG 5143×6000 / 海洋 JPG），上传跑全链路 → glm-4-flash 真实分析（8986ms，279+204=483 tokens）。
+关键真实性证据：**模型输出「动画城市夜景，亮度较低」配 0.11 亮度——与 parse_assets 对该 PNG 字节级实测的 0.1108 完全吻合**（模型真实消费了 prompt 中的解析统计）；三张图的描述逐一对应真实素材。
+过程中真实暴露并修复一个 bug：GLM 偶尔把数值包成字符串/混中文（"4到5秒"）导致 OUTPUT_INVALID 重试耗尽——修复为「结构严格校验 + 数值宽松抽取（str/嵌套/中文混合均降级安全默认）」，修复后同素材一次通过。已知边界（如实）：JPG 仅记录字节数不做像素解析（解码器仅支持 PNG），对应场景亮度回落默认值 0.5。
+
 ## 真实 LLM 调用验证（glm-4-flash，已验证）
 
 **llm_real_call_evidence.json + 10_llm_real_report.png + 11_llm_real_frontend.png + llm_real_report_sample.html**

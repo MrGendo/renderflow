@@ -120,8 +120,33 @@ def call_llm_real(prompt: str, cfg: dict) -> tuple[str, dict]:
     return content, usage
 
 
+def _num_of(v, default: float) -> float:
+    """宽松数值抽取：数字/字符串数字/中英混合/嵌套 value 均可；失败给安全默认。
+
+    真实 GLM 实测会把数值包成字符串或混入中文（如 "4到5秒"）——结构校验保持严格
+    （scene 数量/description 必须合法），数值字段抽取失败降级为默认值而非整单报废。
+    """
+    import re as _re
+    if v is None:
+        return default
+    if isinstance(v, bool):
+        return default
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, str):
+        m = _re.search(r"\d+(?:\.\d+)?", v)
+        return float(m.group()) if m else default
+    if isinstance(v, (list, dict)):
+        try:
+            seq = list(v.values()) if isinstance(v, dict) else list(v)
+            return _num_of(seq[0], default) if seq else default
+        except Exception:
+            return default
+    return default
+
+
 def parse_scenes_json(content: str, scene_count: int) -> list[dict]:
-    """解析并校验模型输出为合法场景结构；不合法抛 LLMError(OUTPUT_INVALID, retryable)。"""
+    """解析并校验模型输出为合法场景结构；结构不合法抛 LLMError(OUTPUT_INVALID, retryable)。"""
     text = content.strip()
     m = re.search(r"\{.*\}", text, re.DOTALL)  # 容错：剥掉可能的 ```json 包裹
     if m:
@@ -139,11 +164,8 @@ def parse_scenes_json(content: str, scene_count: int) -> list[dict]:
     for i, s in enumerate(scenes):
         if not isinstance(s, dict) or not s.get("description"):
             raise LLMError("OUTPUT_INVALID", f"scene[{i}] 缺 description", retryable=True)
-        try:
-            lum = float(s.get("luminance_hint", 0.5))
-            dur = float(s.get("estimated_duration_s", 3.0))
-        except (TypeError, ValueError):
-            raise LLMError("OUTPUT_INVALID", f"scene[{i}] 数值字段非法", retryable=True)
+        lum = _num_of(s.get("luminance_hint"), 0.5)
+        dur = _num_of(s.get("estimated_duration_s"), 3.0)
         out.append({
             "id": str(s.get("id") or f"scene_{i:02d}"),
             "description": str(s["description"])[:200],

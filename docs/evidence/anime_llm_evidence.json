@@ -1,0 +1,75 @@
+{
+  "case": "real anime assets (Safebooru) full pipeline with real GLM",
+  "task_id": "4f23c1d6e27643a8bd4c2bb050e7ef0f",
+  "verified_at": "2026-10-12 16:57:00",
+  "assets": [
+    {
+      "name": "placeholder_1791795404.txt",
+      "bytes": 0,
+      "kind": "txt",
+      "dims": "-",
+      "brightness": null
+    },
+    {
+      "name": "anime_night_city.png",
+      "bytes": 124762,
+      "kind": "png",
+      "dims": "1800x1800",
+      "brightness": 0.1108
+    },
+    {
+      "name": "anime_sunset_sky.jpg",
+      "bytes": 10792632,
+      "kind": "jpg",
+      "dims": "-",
+      "brightness": null
+    },
+    {
+      "name": "anime_water_ocean.jpg",
+      "bytes": 636579,
+      "kind": "jpg",
+      "dims": "-",
+      "brightness": null
+    }
+  ],
+  "llm": {
+    "llm_attempt": 1,
+    "llm_duration_ms": 8986,
+    "llm_mode": "real",
+    "llm_model": "glm-4-flash",
+    "llm_output_summary": "动画城市夜景，亮度较低，画面偏暗。 | 动画日落天空，亮度适中，色彩丰富。 | 动画海洋水面，亮度较低，画面偏暗。 …",
+    "llm_prompt_digest": "0001baa7",
+    "llm_source": "real_model",
+    "llm_usage": {
+      "completion_tokens": 204,
+      "prompt_tokens": 279,
+      "total_tokens": 483
+    }
+  },
+  "scenes": [
+    {
+      "id": "scene_1",
+      "desc": "动画城市夜景，亮度较低，画面偏暗。",
+      "lum": 0.111,
+      "dur": 3.0
+    },
+    {
+      "id": "scene_2",
+      "desc": "动画日落天空，亮度适中，色彩丰富。",
+      "lum": 0.5,
+      "dur": 5.0
+    },
+    {
+      "id": "scene_3",
+      "desc": "动画海洋水面，亮度较低，画面偏暗。",
+      "lum": 0.5,
+      "dur": 4.0
+    },
+    {
+      "id": "scene_4",
+      "desc": "占位符文本，无图像信息。",
+      "lum": 0.5,
+      "dur": 2.0
+    }
+  ]
+}
