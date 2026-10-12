@@ -1,0 +1,42 @@
+[
+  [
+    "SPA 首页由后端托管",
+    true,
+    ""
+  ],
+  [
+    "正常任务 SUCCEEDED",
+    true,
+    "6/6 步, progress=100%"
+  ],
+  [
+    "首败重试恢复 SUCCEEDED",
+    true,
+    "generate_clips 2 次尝试"
+  ],
+  [
+    "相同输入缓存命中",
+    true,
+    "CACHE_HIT×6"
+  ],
+  [
+    "取消任务 CANCELLED",
+    true,
+    "CANCELLED"
+  ],
+  [
+    "SIGKILL Worker（执行中）",
+    true,
+    "exit=-9"
+  ],
+  [
+    "杀后恢复 SUCCEEDED",
+    true,
+    "attempts=[(1, 'FAILED', 'WORKER_INTERRUPTED'), (2, 'SUCCEEDED', None)]"
+  ],
+  [
+    "恢复事件链",
+    true,
+    "1 expired, 1 recovered"
+  ]
+]

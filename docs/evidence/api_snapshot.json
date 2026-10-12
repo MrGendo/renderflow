@@ -1,0 +1,12 @@
+{
+  "generated_at": "2026-10-12 14:20:33",
+  "mode": "local production form (SPA hosted by FastAPI, port 8920)",
+  "tasks": {
+    "normal": "SUCCEEDED",
+    "retry": "SUCCEEDED",
+    "cache": "SUCCEEDED",
+    "cancel": "CANCELLED",
+    "killed_recovered": "SUCCEEDED",
+    "screenshot": "RUNNING"
+  }
+}
