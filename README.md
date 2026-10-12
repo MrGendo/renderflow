@@ -110,7 +110,7 @@ make demo-5  # 重试耗尽（max_attempts=1）→ 任务 FAILED + 下游 SKIPPE
 
 ## 9. 自动化测试结果（2026-10-12 实际运行）
 
-**32 passed**（26 管线 + 6 LLM 节点；LLM 测试用本地假 OpenAI 端点，Mock 测试验证标记不冒充）。真实外部模型调用：**待配置 API Key 后验证**（未验证前不宣称真实模型跑通；本地假端点已验证协议兼容性：Bearer 头/请求体/429/非法输出/Token 用量解析）。
+**32+3 passed**（26 管线 + 6 LLM 节点 + 3 批次检查点；LLM 测试用本地假 OpenAI 端点，Mock 测试验证标记不冒充）。真实外部模型调用：✅ 已验证（glm-4-flash，见 docs/evidence/llm_real_call_evidence.json）。
 
 | 文件 | 覆盖 |
 |---|---|
@@ -121,6 +121,7 @@ make demo-5  # 重试耗尽（max_attempts=1）→ 任务 FAILED + 下游 SKIPPE
 | test_cache.py | T13 命中 / T14 输入变失效 / T15 版本变失效 / T16 文件损坏清行 |
 | test_concurrency.py | T17 两 Worker 恰好一次 / T18 十并发重试幂等 / T19 busy 渡锁 |
 | test_llm.py | Mock 标记不冒充 / 本地假端点真实调用（Bearer+Token 用量+密钥不落日志）/ 429 限流重试 / 非法输出重试 / 限流耗尽→FAILED→手动恢复 / LLM 调用中 Worker SIGKILL 恢复 |
+| test_batches.py | W6：5 批次中途 SIGKILL→重启→已完成批次复用不重跑 / fail_at_batch 一次性失败→重试复用 / crash_at_batch 批次崩溃→恢复复用 |
 | test_cancel.py | T20a 取消 / T20b 终态 409 / T20c 取消绝不误标成功 + RUNNING 检查点取消 |
 
 前端：tsc -b && vite build 零错误；三页面经无头 Chrome + 真实后端联调验证（列表 3 任务真实数据、详情 DAG/事件时间线、尝试详情页含缓存命中证据链）。

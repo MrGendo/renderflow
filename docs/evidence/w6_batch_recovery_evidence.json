@@ -1,0 +1,61 @@
+{
+  "case": "W6 demo-mode long task with batch checkpoints + SIGKILL recovery",
+  "task_id": "55a99fb3fd1f481ca7e69db69d2a46c7",
+  "verified_at": "2026-10-12 17:52:07",
+  "assets": [
+    "scenery_7225817.jpg",
+    "sky_7225918.jpg",
+    "night_7225959.png",
+    "water_7225792.jpg",
+    "sunset_7225626.jpg",
+    "forest_7225819.jpg"
+  ],
+  "batch_pause_ms": 2000,
+  "killed_after_batches": [
+    1,
+    2,
+    3
+  ],
+  "final": "SUCCEEDED",
+  "batches": [
+    [
+      1,
+      "DONE",
+      "ph1791798686.txt"
+    ],
+    [
+      2,
+      "DONE",
+      "scenery_7225817.jpg"
+    ],
+    [
+      3,
+      "DONE",
+      "sky_7225918.jpg"
+    ],
+    [
+      4,
+      "DONE",
+      "night_7225959.png"
+    ],
+    [
+      5,
+      "DONE",
+      "water_7225792.jpg"
+    ],
+    [
+      6,
+      "DONE",
+      "sunset_7225626.jpg"
+    ],
+    [
+      7,
+      "DONE",
+      "forest_7225819.jpg"
+    ]
+  ],
+  "events": {
+    "BATCH_REUSED": 3,
+    "STEP_RECOVERED": 1
+  }
+}

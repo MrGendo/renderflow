@@ -1,7 +1,7 @@
 // 页面 B：任务详情（DAG / 步骤表 + attempts 展开 / 事件时间线 / 取消与重试）
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { api, ApiRequestError } from './api'
+import { api, ApiRequestError, fetchBatches, fetchStepLog, uploadUrl } from './api'
 import type { Attempt, StepFull, TaskDetail, TaskEvent } from './types'
 import {
   ErrorBanner, eventDotClass, fmtDuration, fmtTime, isTerminal, NotFound,
@@ -55,6 +55,69 @@ function DagView({ steps }: { steps: StepFull[] }) {
   )
 }
 
+function StepPanel({ step, taskId }: { step: import('./types').StepFull; taskId: string }) {
+  const [tab, setTab] = useState<'io' | 'batches' | 'log'>('io')
+  const [batches, setBatches] = useState<import('./api').BatchRow[]>([])
+  const [logLines, setLogLines] = useState<import('./api').LogLine[] | null>(null)
+
+  useEffect(() => {
+    if (tab === 'batches') void fetchBatches(taskId, step.step_type).then(setBatches)
+    if (tab === 'log' && logLines === null) void fetchStepLog(step.step_id).then(setLogLines)
+  }, [tab, taskId, step.step_id, step.status, logLines])
+
+  return (
+    <div className="attempt-box">
+      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+        {(['io', 'batches', 'log'] as const).map((t) => (
+          <button key={t} className={`btn small${tab === t ? ' primary' : ''}`} onClick={() => setTab(t)}>
+            {t === 'io' ? '输入/输出产物' : t === 'batches' ? '批次进度' : '执行日志'}
+          </button>
+        ))}
+        <span className="small muted" style={{ alignSelf: 'center' }}>· input_hash <span className="mono">{step.input_hash.slice(0, 10)}…</span></span>
+      </div>
+      {tab === 'io' && <AttemptList stepId={step.step_id} taskId={taskId} stepType={step.step_type} />}
+      {tab === 'batches' && (
+        batches.length === 0
+          ? <div className="small muted">该步骤无批次记录（非批次化步骤）</div>
+          : (
+            <table className="tbl">
+              <thead><tr><th>批次</th><th>输入</th><th>状态</th><th>亮度</th><th>字节数</th></tr></thead>
+              <tbody>
+                {batches.map((b) => (
+                  <tr key={b.batch_no}>
+                    <td className="num">#{b.batch_no}</td>
+                    <td className="mono small">{b.input_name ?? '—'}</td>
+                    <td><StatusBadge status={b.status === 'DONE' ? 'SUCCEEDED' : b.status === 'RUNNING' ? 'RUNNING' : b.status === 'FAILED' ? 'FAILED' : 'PENDING'} /></td>
+                    <td className="num small">{(b.detail as { mean_brightness?: number } | null)?.mean_brightness ?? '—'}</td>
+                    <td className="num small">{(b.detail as { bytes?: number } | null)?.bytes ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )
+      )}
+      {tab === 'log' && (
+        logLines === null
+          ? <div className="small muted">加载日志…</div>
+          : logLines.length === 0
+            ? <div className="small muted">暂无日志</div>
+            : (
+              <div className="mono small" style={{ maxHeight: 240, overflow: 'auto', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: 8 }}>
+                {logLines.map((l, i) => (
+                  <div key={i}>
+                    <span className="muted">{new Date((l.t as number) * 1000).toLocaleTimeString()} </span>
+                    <b>{l.event}</b>
+                    {' '}
+                    {JSON.stringify(Object.fromEntries(Object.entries(l).filter(([k]) => k !== 't' && k !== 'event'))).slice(0, 160)}
+                  </div>
+                ))}
+              </div>
+            )
+      )}
+    </div>
+  )
+}
+
 function AttemptList({ stepId, taskId, stepType }: { stepId: string; taskId: string; stepType: string }) {
   const [attempts, setAttempts] = useState<Attempt[] | null>(null)
   const [output, setOutput] = useState<Record<string, unknown> | null>(null)
@@ -63,7 +126,6 @@ function AttemptList({ stepId, taskId, stepType }: { stepId: string; taskId: str
     api.getAttempts(stepId).then((d) => { if (alive) setAttempts(d) }).catch(() => { if (alive) setAttempts([]) })
     return () => { alive = false }
   }, [stepId])
-  // 取最新成功 attempt 的 output.json 内容（输入摘要/处理统计/产物清单）
   useEffect(() => {
     if (!attempts || attempts.length === 0) return
     const ok = [...attempts].reverse().find((a) => a.status === 'SUCCEEDED')
@@ -78,6 +140,8 @@ function AttemptList({ stepId, taskId, stepType }: { stepId: string; taskId: str
   const payload = (output?.mock_payload ?? null) as Record<string, unknown> | null
   const artFiles = (payload?.art_files ?? null) as Record<string, string> | null
   const assetUrl = (name: string) => `/api/tasks/${taskId}/artifacts/${stepType}/${encodeURIComponent(name)}`
+  const assetStats = (payload?.asset_stats ?? null) as Array<Record<string, unknown>> | null
+  const canPreview = (n: string) => /\.(png|jpe?g|gif|webp)$/i.test(n)
   return (
     <div>
       <table className="tbl">
@@ -98,41 +162,70 @@ function AttemptList({ stepId, taskId, stepType }: { stepId: string; taskId: str
           ))}
         </tbody>
       </table>
-      {/* 输入 → 处理 → 输出 */}
       {payload && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 10 }}>
-          <div>
-            <div className="small muted" style={{ marginBottom: 4 }}>■ 输入与处理统计（真实解析）</div>
-            <pre className="mono small" style={{
-              background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8,
-              padding: 8, margin: 0, maxHeight: 180, overflow: 'auto', whiteSpace: 'pre-wrap',
-            }}>{JSON.stringify(Object.fromEntries(Object.entries(payload).filter(([k]) => k !== 'art_files')), null, 1).slice(0, 900)}</pre>
-          </div>
-          <div>
-            <div className="small muted" style={{ marginBottom: 4 }}>■ 输出产物（真实文件，可预览/下载）</div>
-            {artFiles && Object.keys(artFiles).length > 0 ? (
+        <div style={{ marginTop: 10 }}>
+          {assetStats && assetStats.length > 0 && (
+            <div style={{ marginBottom: 10 }}>
+              <div className="small muted" style={{ marginBottom: 4 }}>■ 输入素材（任务上传的原始文件）</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                {Object.entries(artFiles).map(([name, note]) => {
-                  const url = assetUrl(name)
-                  const ext = name.split('.').pop()?.toLowerCase()
+                {assetStats.map((a) => {
+                  const n = String(a.name ?? '')
+                  const url = uploadUrl(taskId, n)
                   return (
-                    <div key={name} style={{ width: 200, border: '1px solid var(--border)', borderRadius: 8, padding: 8 }}>
-                      {ext === 'png' || ext === 'gif' ? (
-                        <a href={url} target="_blank" rel="noreferrer"><img src={url} alt={name} style={{ width: '100%', borderRadius: 6, border: '1px solid var(--border)' }} /></a>
-                      ) : ext === 'wav' ? (
-                        <audio controls style={{ width: '100%' }} src={url} />
-                      ) : ext === 'html' ? (
-                        <a className="btn small" href={url} target="_blank" rel="noreferrer">打开 HTML 报告 ↗</a>
+                    <div key={n} style={{ width: 170, border: '1px solid var(--border)', borderRadius: 8, padding: 8 }}>
+                      {a.exists && canPreview(n) ? (
+                        <a href={url} target="_blank" rel="noreferrer">
+                          <img src={url} alt={n} style={{ width: '100%', height: 84, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)' }} />
+                        </a>
                       ) : (
-                        <a className="btn small" href={url}>下载</a>
+                        <div style={{ height: 84, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px dashed var(--border)', borderRadius: 6 }} className="small muted">
+                          {a.exists ? '📄 非图片文件' : '未上传'}
+                        </div>
                       )}
-                      <div className="mono small" style={{ marginTop: 6, wordBreak: 'break-all' }}>{name}</div>
-                      <div className="small muted">{note}</div>
+                      <div className="mono small" style={{ marginTop: 6, wordBreak: 'break-all' }}>{n}</div>
+                      <div className="small muted">
+                        {a.kind === 'png' ? `${a.width}×${a.height} · 亮度 ${a.mean_brightness}` : `${a.bytes ?? 0} B`}
+                      </div>
                     </div>
                   )
                 })}
               </div>
-            ) : <div className="small muted">无产物文件</div>}
+            </div>
+          )}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <div className="small muted" style={{ marginBottom: 4 }}>■ 输入与处理统计（真实解析）</div>
+              <pre className="mono small" style={{
+                background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8,
+                padding: 8, margin: 0, maxHeight: 180, overflow: 'auto', whiteSpace: 'pre-wrap',
+              }}>{JSON.stringify(Object.fromEntries(Object.entries(payload).filter(([k]) => k !== 'art_files' && k !== 'asset_stats')), null, 1).slice(0, 900)}</pre>
+            </div>
+            <div>
+              <div className="small muted" style={{ marginBottom: 4 }}>■ 输出产物（真实文件，可预览/下载）</div>
+              {artFiles && Object.keys(artFiles).length > 0 ? (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                  {Object.entries(artFiles).map(([name, note]) => {
+                    const url = assetUrl(name)
+                    const ext = name.split('.').pop()?.toLowerCase()
+                    return (
+                      <div key={name} style={{ width: 200, border: '1px solid var(--border)', borderRadius: 8, padding: 8 }}>
+                        {ext === 'png' || ext === 'gif' ? (
+                          <a href={url} target="_blank" rel="noreferrer"><img src={url} alt={name} style={{ width: '100%', borderRadius: 6, border: '1px solid var(--border)' }} /></a>
+                        ) : ext === 'wav' ? (
+                          <audio controls style={{ width: '100%' }} src={url} />
+                        ) : ext === 'html' ? (
+                          <a className="btn small" href={url} target="_blank" rel="noreferrer">打开 HTML 报告 ↗</a>
+                        ) : (
+                          <a className="btn small" href={url}>下载</a>
+                        )}
+                        <div className="mono small" style={{ marginTop: 6, wordBreak: 'break-all' }}>{name}</div>
+                        <div className="small muted">{note}</div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : <div className="small muted">无产物文件</div>}
+            </div>
           </div>
         </div>
       )}
@@ -293,7 +386,7 @@ export default function TaskDetailPage({ taskId }: { taskId: string }) {
                                 <div className="small muted" style={{ marginBottom: 6 }}>
                                   执行尝试历史（{s.step_type}）· input_hash <span className="mono">{s.input_hash.slice(0, 12)}…</span> · step_version {s.step_version}
                                 </div>
-                                <AttemptList stepId={s.step_id} taskId={taskId} stepType={s.step_type} />
+                                <StepPanel step={s} taskId={taskId} />
                               </div>
                             </td>
                           </tr>

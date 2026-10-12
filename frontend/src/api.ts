@@ -71,3 +71,32 @@ export const api = {
     request<Record<string, unknown>>(`/api/tasks/${taskId}/cancel`, { method: 'POST' }),
   health: () => request<{ status: string }>('/api/health'),
 }
+
+// W6：产物/批次/日志辅助端点（直接 URL 用于 <img>/<audio>，或 fetch 解析）
+export const uploadUrl = (taskId: string, name: string) =>
+  `/api/tasks/${taskId}/uploads/${encodeURIComponent(name)}`
+export const artifactUrl = (taskId: string, stepType: string, name: string) =>
+  `/api/tasks/${taskId}/artifacts/${stepType}/${encodeURIComponent(name)}`
+
+export interface BatchRow {
+  batch_no: number
+  status: string
+  input_name: string | null
+  started_at: number | null
+  finished_at: number | null
+  detail: Record<string, unknown> | null
+}
+
+export async function fetchBatches(taskId: string, stepType?: string): Promise<BatchRow[]> {
+  const r = await fetch(`/api/tasks/${taskId}/batches${stepType ? `?step_type=${stepType}` : ''}`)
+  const j = await r.json()
+  return j.ok ? (j.data as BatchRow[]) : []
+}
+
+export interface LogLine { t: number; event: string; [k: string]: unknown }
+
+export async function fetchStepLog(stepId: string): Promise<LogLine[]> {
+  const r = await fetch(`/api/steps/${stepId}/log`)
+  const j = await r.json()
+  return j.ok ? ((j.data?.lines ?? []) as LogLine[]) : []
+}

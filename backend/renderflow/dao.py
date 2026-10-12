@@ -96,6 +96,51 @@ def merge_task_assets(conn, task_id: str, names: list[str]) -> None:
     return run_tx(conn, _fn)
 
 
+# ---------------------------------------------------------------- 批次检查点（W6 演示模式）
+
+def batch_get(conn, task_id: str, step_type: str, batch_no: int):
+    return conn.execute(
+        "SELECT * FROM task_batches WHERE task_id=? AND step_type=? AND batch_no=?",
+        (task_id, step_type, batch_no),
+    ).fetchone()
+
+
+def batch_set_status(conn, task_id: str, step_type: str, batch_no: int, status: str,
+                     *, input_name: str | None = None, output_ref: str | None = None,
+                     output_checksum: str | None = None, detail: dict | None = None) -> None:
+    """单事务 upsert 批次状态（检查点：DONE 批次重启后直接复用，不重跑）。"""
+    def _fn(c):
+        now = utcnow()
+        c.execute(
+            "INSERT INTO task_batches (task_id, step_type, batch_no, status, input_name,"
+            " output_ref, output_checksum, detail_json, started_at, finished_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?)"
+            " ON CONFLICT(task_id, step_type, batch_no) DO UPDATE SET"
+            "  status=excluded.status, output_ref=COALESCE(excluded.output_ref, task_batches.output_ref),"
+            "  output_checksum=COALESCE(excluded.output_checksum, task_batches.output_checksum),"
+            "  detail_json=COALESCE(excluded.detail_json, task_batches.detail_json),"
+            "  finished_at=CASE WHEN excluded.status IN ('DONE','FAILED') THEN ? ELSE task_batches.finished_at END,"
+            "  started_at=CASE WHEN excluded.status='RUNNING' AND task_batches.started_at IS NULL THEN ? ELSE task_batches.started_at END",
+            (task_id, step_type, batch_no, status, input_name, output_ref, output_checksum,
+             json.dumps(detail, ensure_ascii=False) if detail else None,
+             now if status == "RUNNING" else None, now if status in ("DONE", "FAILED") else None,
+             now, now),
+        )
+    return run_tx(conn, _fn)
+
+
+def list_batches(conn, task_id: str, step_type: str | None = None) -> list:
+    if step_type:
+        rows = conn.execute(
+            "SELECT * FROM task_batches WHERE task_id=? AND step_type=? ORDER BY batch_no",
+            (task_id, step_type)).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM task_batches WHERE task_id=? ORDER BY step_type, batch_no",
+            (task_id,)).fetchall()
+    return [dict(r) for r in rows]
+
+
 def get_task_summary(conn, task_id: str):
     return summarize_task(get_task(conn, task_id), list_steps(conn, task_id))
 

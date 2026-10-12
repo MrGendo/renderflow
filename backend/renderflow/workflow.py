@@ -43,7 +43,8 @@ def cache_key(step_type: str, input_hash: str, step_version: str, config_hash: s
 
 
 def _parse_assets_input(task_input: dict, upstream: dict) -> dict:
-    return {"assets": task_input.get("assets", [])}
+    # demo 配置透传（batch_pause_ms 等演示模式参数，随任务持久化）
+    return {"assets": task_input.get("assets", []), "demo": task_input.get("demo") or {}}
 
 
 def _analyze_scenes_input(task_input: dict, upstream: dict) -> dict:

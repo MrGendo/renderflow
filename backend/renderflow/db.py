@@ -112,6 +112,24 @@ SCHEMA_MIGRATIONS = [
     (1, "W1 初始建表：tasks/task_steps/step_attempts/step_cache/task_events + 索引", _SCHEMA_V1),
     # W2：手动重试幂等标记（attempt_count 归零语义下区分"已重试"与"从未失败"）
     (2, "W2 task_steps 增加 manual_retry_count", "ALTER TABLE task_steps ADD COLUMN manual_retry_count INTEGER NOT NULL DEFAULT 0;"),
+    # W6：批次检查点（演示模式长任务的分批执行状态；Worker 重启后复用已完成批次）
+    (3, "W6 task_batches 批次检查点表",
+     """
+     CREATE TABLE IF NOT EXISTS task_batches (
+       id INTEGER PRIMARY KEY AUTOINCREMENT,
+       task_id TEXT NOT NULL,
+       step_type TEXT NOT NULL,
+       batch_no INTEGER NOT NULL,
+       status TEXT NOT NULL DEFAULT 'PENDING',   -- PENDING/RUNNING/DONE/FAILED
+       input_name TEXT,                           -- 该批次对应的输入素材名
+       output_ref TEXT,                           -- 批次产物相对路径
+       output_checksum TEXT,
+       detail_json TEXT,                          -- 批次统计（亮度/尺寸等）
+       started_at REAL, finished_at REAL,
+       UNIQUE(task_id, step_type, batch_no)
+     );
+     CREATE INDEX IF NOT EXISTS idx_batches_task ON task_batches(task_id, step_type);
+     """),
 ]
 
 

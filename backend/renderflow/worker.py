@@ -112,6 +112,7 @@ def run_once(conn, settings: Settings, worker_id: str, loop_count: int = 0) -> b
             log_ref=log_ref, data_dir=settings.data_dir,
             timeout_s=spec.timeout_s, faults=faults,
             upload_dir=os.path.join(settings.data_dir, "uploads", step["task_id"]),
+            conn=conn,
         )
         last_hb = {"at": 0.0}
 

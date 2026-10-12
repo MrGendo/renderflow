@@ -238,6 +238,53 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return ok({"task_id": task_id, "saved": saved,
                    "files": [{"name": n, "bytes": os.path.getsize(os.path.join(st.data_dir, "uploads", task_id, n))} for n in saved]})
 
+    @app.get("/api/tasks/{task_id}/uploads/{name}")
+    def get_upload(task_id: str, name: str):
+        """预览/下载任务上传的原始素材（输入可见性的关键端点）。"""
+        if dao.get_task(_conn(), task_id) is None:
+            raise ApiError(404, "NOT_FOUND", f"任务不存在: {task_id}")
+        safe = os.path.basename(name)  # 防穿越
+        path = os.path.join(st.data_dir, "uploads", task_id, safe)
+        if not os.path.isfile(path):
+            raise ApiError(404, "NOT_FOUND", f"素材不存在: {safe}")
+        mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                ".gif": "image/gif", ".webp": "image/webp", ".mp3": "audio/mpeg",
+                ".wav": "audio/wav", ".mp4": "video/mp4", ".txt": "text/plain"}.get(
+            os.path.splitext(safe)[1].lower(), "application/octet-stream")
+        from fastapi.responses import FileResponse
+        return FileResponse(path, media_type=mime)
+
+    @app.get("/api/tasks/{task_id}/batches")
+    def get_batches(task_id: str, step_type: str | None = None):
+        """批次检查点列表（演示模式的子任务进度：状态/输入/时间/复用标记）。"""
+        if dao.get_task(_conn(), task_id) is None:
+            raise ApiError(404, "NOT_FOUND", f"任务不存在: {task_id}")
+        rows = dao.list_batches(_conn(), task_id, step_type)
+        return ok([{**r, "detail": json.loads(r["detail_json"]) if r.get("detail_json") else None}
+                   for r in rows])
+
+    @app.get("/api/steps/{step_id}/log")
+    def get_step_log(step_id: str):
+        """读取该步骤最新尝试的 run.log（JSON 行式执行日志原文）。"""
+        step = dao.get_step(_conn(), step_id)
+        if step is None:
+            raise ApiError(404, "NOT_FOUND", f"步骤不存在: {step_id}")
+        att = _conn().execute(
+            "SELECT log_ref FROM step_attempts WHERE step_id=? AND log_ref IS NOT NULL"
+            " ORDER BY attempt_no DESC LIMIT 1", (step_id,)).fetchone()
+        if att is None or not att["log_ref"]:
+            return ok({"lines": [], "log_ref": None})
+        path = os.path.join(st.data_dir, att["log_ref"])
+        if not os.path.isfile(path):
+            return ok({"lines": [], "log_ref": att["log_ref"]})
+        lines = []
+        for raw in open(path, encoding="utf-8").read().splitlines()[-500:]:
+            try:
+                lines.append(json.loads(raw))
+            except json.JSONDecodeError:
+                continue
+        return ok({"log_ref": att["log_ref"], "lines": lines})
+
     @app.get("/api/tasks/{task_id}/artifacts/{step_type}/{name}")
     def get_artifact(task_id: str, step_type: str, name: str):
         """下载步骤产物（PNG/GIF/WAV/HTML）。路径限定在 attempt 目录内。"""

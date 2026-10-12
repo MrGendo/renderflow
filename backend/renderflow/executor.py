@@ -13,6 +13,7 @@ compose_video 出逐帧合成 GIF；export_result 出 HTML 报告（内嵌全部
 
 import base64
 import json
+import sqlite3
 import os
 import random
 import time
@@ -40,6 +41,33 @@ class StepContext:
     timeout_s: float = 30.0  # 步骤超时熔断（spec.timeout_s）
     faults: dict = field(default_factory=dict)  # 该步骤的故障注入配置
     upload_dir: str = ""  # 任务上传的真实素材目录（data/uploads/<task_id>）
+    conn: "sqlite3.Connection | None" = None  # DB 连接（批次检查点用；进程内 Worker 传入）
+
+
+def _dao_batch_get(ctx: "StepContext", batch_no: int):
+    from . import dao
+    return dao.batch_get(ctx.conn, ctx.task_id, "parse_assets", batch_no)
+
+
+def _dao_batch_set(ctx: "StepContext", batch_no: int, status: str, **kw):
+    from . import dao
+    return dao.batch_set_status(ctx.conn, ctx.task_id, "parse_assets", batch_no, status, **kw)
+
+
+def _batch_event(ctx: "StepContext", event_type: str, batch_no: int, **detail) -> None:
+    """批次事件双写：run.log（诊断全文）+ task_events（时间线可查，失败不阻断）。"""
+    from .db import run_tx
+    from . import events as events_mod
+    _log(ctx, event_type, batch_no=batch_no, **detail)
+    if ctx.conn is None:
+        return
+    try:
+        run_tx(ctx.conn, lambda c: events_mod.insert_event(
+            c, ctx.task_id, event_type, step_id=ctx.step_id, attempt_id=ctx.attempt_id,
+            status=detail.get("status"), detail={"batch_no": batch_no, **detail},
+        ))
+    except Exception:
+        pass  # 事件尽力而为：批次事务本身才是关键路径
 
 
 @dataclass
@@ -74,11 +102,45 @@ def _mock_payload(ctx: StepContext) -> dict:
         art_files[name] = note
 
     if ctx.step_type == "parse_assets":
-        # 真实处理：读取上传的素材文件，统计字节数；对 PNG 做真实解码测亮度
+        # ── 批次引擎（W6 演示模式）：逐素材分批处理，批次检查点落库，重启复用 ──
         names = _names(ctx.inputs.get("assets", []))
+        demo = ctx.inputs.get("demo", {}) or {}
+        batch_pause_ms = int(demo.get("batch_pause_ms", 0))  # 演示模式：批次间可感知间隔
         stats = []
-        for name in names:
+        reused, executed = [], []
+        for idx, name in enumerate(names):
+            bno = idx + 1
+            # ── 批次级故障注入（生效门在 API 层；显式标记的人为故障演示机制）──
+            flt = ctx.faults or {}
+            fail_at = int(flt.get("fail_at_batch", 0))
+            crash_at = int(flt.get("crash_at_batch", 0))
+            # 一次性语义（与 fail_first_n_attempts 一致）：该批次已注入过失败（FAILED 且无 detail）→ 重试时放行
+            prev_flt = _dao_batch_get(ctx, bno) if (fail_at or crash_at) else None
+            already_injected = (prev_flt is not None and prev_flt["status"] == "FAILED"
+                                and not prev_flt["detail_json"])
+            if fail_at and bno == fail_at and not already_injected:
+                _batch_event(ctx, "BATCH_FAULT_INJECTED", bno, kind="fail",
+                             failure_type=flt.get("failure_type", "TRANSIENT_ERROR"))
+                _dao_batch_set(ctx, bno, "FAILED", input_name=name)
+                return {"__step_failed__": True,
+                        "error_code": flt.get("failure_type", "TRANSIENT_ERROR"),
+                        "error_message": f"批次 {bno}（{name}）注入失败（演示）"}
+            if crash_at and bno == crash_at and not already_injected:
+                _batch_event(ctx, "BATCH_FAULT_INJECTED", bno, kind="crash_worker")
+                _dao_batch_set(ctx, bno, "FAILED", input_name=name)
+                os._exit(137)  # 真实进程崩溃：租约留给回收器，已完成批次检查点保留
+            prev = _dao_batch_get(ctx, bno)
+            if prev is not None and prev["status"] == "DONE" and prev["detail_json"]:
+                # 检查点复用：Worker 重启后已完成批次不再处理（BATCH_REUSED 事件可查）
+                detail = json.loads(prev["detail_json"])
+                stats.append(detail)
+                reused.append(bno)
+                _batch_event(ctx, "BATCH_REUSED", bno, input_name=name)
+                continue
             path = os.path.join(ctx.upload_dir, name)
+            _dao_batch_set(ctx, bno, "RUNNING", input_name=name)
+            _batch_event(ctx, "BATCH_START", bno, input_name=name)
+            # 真实处理：读取文件字节统计；PNG 逐像素解码测亮度
             entry = {"name": name, "exists": os.path.isfile(path),
                      "bytes": os.path.getsize(path) if os.path.isfile(path) else 0}
             if entry["exists"] and name.lower().endswith(".png"):
@@ -93,11 +155,23 @@ def _mock_payload(ctx: StepContext) -> dict:
                     entry["decode_error"] = repr(e)[:80]
             else:
                 entry["kind"] = name.rsplit(".", 1)[-1] if "." in name else "bin"
+            # 批次产物：缩略图 PNG（亮度条=实测值）——输入素材的直观产物
+            if entry.get("exists"):
+                thumb = artifacts.frame_png(96, 72, seed=int(ctx.input_hash[:8], 16) + bno,
+                                            brightness=entry.get("mean_brightness"),
+                                            label_bar=int((entry.get("mean_brightness") or 0.5) * 100))
+                save(f"batch_{bno:02d}_{name}.thumb.png", thumb, f"批次{bno} 输入缩略（亮度 {entry.get('mean_brightness', '—')}）")
+            _dao_batch_set(ctx, bno, "DONE", input_name=name, detail=entry)
             stats.append(entry)
-        # 产物：上传素材总览图（每素材一行，条长=文件大小占比）
+            executed.append(bno)
+            _batch_event(ctx, "BATCH_DONE", bno, input_name=name)
+            if batch_pause_ms > 0 and idx < len(names) - 1:
+                # 演示模式的真实工作量间隔（非故障机制，让进度肉眼可跟随）
+                time.sleep(batch_pause_ms / 1000.0)
         sizes = [min(s["bytes"] / 65536.0, 1.0) for s in stats] or [0.5]
         save("assets_overview.png", artifacts.bar_chart_png(sizes), "素材大小总览")
         return {"asset_names": names, "asset_count": len(names), "asset_stats": stats,
+                "batch_summary": {"total": len(names), "executed": executed, "reused": reused},
                 "art_files": art_files}
     if ctx.step_type == "analyze_scenes":
         n = int(cfg["scene_count"])
@@ -135,12 +209,37 @@ def _mock_payload(ctx: StepContext) -> dict:
         llm_durs = scenes.get("scene_durations_s")
         durations_s = [round(llm_durs[i % len(llm_durs)], 2) if llm_durs else round(rng.uniform(1.0, 5.0), 2)
                        for i in range(max(n, 1))]
-        # 真实产物：GIF 动画，每镜头一帧，帧亮度=真实镜头亮度
-        def frame_fn(lv: float):
+        # 真实产物：GIF 动画——每镜头一帧，帧上大字标注场景号/亮度/时长（语义可读）
+        descs = scenes.get("scene_descriptions") or []
+        def frame_fn(i: int, lv: float, dur: float, desc: str):
             def f(x: int, y: int) -> tuple[int, int, int]:
-                return (int(30 + 180 * lv * x / 63), int(30 + 120 * (1 - lv) * y / 47), 90)
+                u, v = x / 63, y / 47
+                # 底色随亮度：亮场景亮底、暗场景暗底
+                base = (int(40 + 200 * lv * u), int(40 + 160 * lv * v), int(60 + 120 * (1 - lv)))
+                # 场景号大字（粗块数字，20x28 像素点阵区域）
+                cx, cy = 6 + (i % 2) * 30, 6 + (i // 2) * 0
+                if 6 <= x < 22 and 6 <= y < 40:
+                    # 简易 5x7 数字点阵：场景号 i+1 的各位
+                    n = i + 1
+                    d1, d2 = n // 10, n % 10
+                    digits = [(0,0), (0,0)]
+                    from .artifacts import FONT_DIGITS
+                    glyph = FONT_DIGITS.get(d2 if x < 14 else d1, FONT_DIGITS[0])
+                    gx, gy = (x - (6 if x < 14 else 14)) * 8 // 16, (y - 6) * 7 // 34
+                    if 0 <= gx < 4 and 0 <= gy < 7 and glyph[gy][gx]:
+                        return (20, 20, 30) if lv > 0.4 else (240, 240, 255)
+                # 底部亮度条（长度=该场景亮度）
+                if 38 <= y < 44 and 4 <= x < 4 + int(56 * lv):
+                    return (24, 138, 76)
+                # 描述首段小字区（顶部横带，有描述时深色带）
+                if descs and 0 <= y < 3 and x < min(60, max(8, len(desc) // 2)):
+                    return (20, 20, 40)
+                return base
             return f
-        frames: list = [frame_fn(lum[i % len(lum)]) for i in range(max(n, 1))]
+        frames: list = [frame_fn(i, lum[i % len(lum)],
+                                 durations_s[i] if i < len(durations_s) else 2.0,
+                                 descs[i] if i < len(descs) else "")
+                        for i in range(max(n, 1))]
         save("clips_preview.gif", artifacts.gif_encode(64, 48, frames, delay_ms=250),
              f"{len(frames)} 帧动画预览（帧亮度=镜头真实亮度）")
         return {"clip_ids": clip_ids, "durations_s": durations_s, "art_files": art_files}

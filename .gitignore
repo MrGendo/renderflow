@@ -10,3 +10,5 @@ dist/
 # 测试运行产物
 backend/*.log
 backend/data/
+
+backend/w6_*.log

@@ -2,6 +2,13 @@
 
 生成时间：2026-10-12 14:4x ~ 16:4x（CST）｜生成方式：真实进程运行 + CDP 无头浏览器截图，非 mock。
 
+## 演示模式与批次检查点（W6 新增，已真实验证）
+
+**w6_batch_recovery_evidence.json + 14~17 截图**
+任务 55a99fb3（2026-10-12 17:51）：6 张 Safebooru 真实动漫图 × batch_pause_ms=2000（演示模式，非 sleep 模拟——每批做真实字节统计+PNG 解码+缩略图产物）→ 第 3 批完成后真实 SIGKILL Worker → 任务正确停留 RUNNING → 新 Worker 接管（LEASE_EXPIRED+STEP_RECOVERED）→ **BATCH_REUSED×3：已完成批次零重跑**（task_batches 检查点表 V3 迁移）→ 其余批次续跑 → 6/6 SUCCEEDED。
+前端三标签：输入/输出（6 张原图以原始分辨率预览，1536×1714 等真实尺寸）、批次进度（每批状态/输入名/亮度/字节数）、执行日志（run.log 原文，BATCH_REUSED 可见）。
+批次级故障注入：fail_at_batch（一次性失败→步骤重试→前序批次复用）与 crash_at_batch（批次 2 真实进程崩溃→恢复后批次 1 复用）均有自动化测试（tests/test_batches.py 3 项）。
+
 ## 真实动漫素材全链路（Safebooru 真图 + 真实 GLM，已验证）
 
 **anime_llm_evidence.json + 12_anime_llm_detail.png + 13_anime_llm_report.png + anime_llm_report_sample.html**
