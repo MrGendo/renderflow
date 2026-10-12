@@ -117,7 +117,8 @@ def execute(ctx: StepContext, on_tick: Callable[[], None] | None = None) -> Step
                 )
             time.sleep(min(_TICK_S, deadline - now_m, hard_deadline - now_m))
             tick_no += 1
-            if fault.get("crash_worker"):
+            if fault.get("crash_worker") and ctx.attempt_no <= int(fault.get("crash_first_n_attempts", 1)):
+                # 默认只崩 1 次（crash_first_n_attempts 可调），否则重启后永远无法完成任务
                 _log(ctx, "WORKER_CRASH", exit_code=137)
                 os._exit(137)  # 模拟进程被 SIGKILL：不做任何清理，租约留给回收器
             if on_tick:
