@@ -1,0 +1,32 @@
+"""状态与错误码枚举。W1 仅用到部分错误码，但 schema 提前定义全 7 类。"""
+
+from enum import Enum
+
+
+class TaskStatus(str, Enum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    RETRY_WAIT = "RETRY_WAIT"
+    FAILED = "FAILED"
+    SUCCEEDED = "SUCCEEDED"
+    CANCELLED = "CANCELLED"
+
+
+class StepStatus(str, Enum):
+    PENDING = "PENDING"
+    READY = "READY"
+    RUNNING = "RUNNING"
+    RETRY_WAIT = "RETRY_WAIT"
+    FAILED = "FAILED"
+    SUCCEEDED = "SUCCEEDED"
+    SKIPPED = "SKIPPED"
+
+
+class ErrorCode(str, Enum):
+    TRANSIENT_ERROR = "TRANSIENT_ERROR"
+    TIMEOUT = "TIMEOUT"
+    WORKER_INTERRUPTED = "WORKER_INTERRUPTED"
+    INVALID_INPUT = "INVALID_INPUT"
+    RESOURCE_UNAVAILABLE = "RESOURCE_UNAVAILABLE"
+    OUTPUT_INVALID = "OUTPUT_INVALID"
+    INTERNAL_ERROR = "INTERNAL_ERROR"

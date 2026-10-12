@@ -1,0 +1,27 @@
+[project]
+name = "renderflow"
+version = "0.1.0"
+description = "RenderFlow 动画素材处理任务管线后端（W1）"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["renderflow"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
