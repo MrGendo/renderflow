@@ -12,6 +12,7 @@ compose_video 出逐帧合成 GIF；export_result 出 HTML 报告（内嵌全部
 """
 
 import base64
+import json
 import os
 import random
 import time
@@ -100,21 +101,40 @@ def _mock_payload(ctx: StepContext) -> dict:
                 "art_files": art_files}
     if ctx.step_type == "analyze_scenes":
         n = int(cfg["scene_count"])
-        # 真实亮度驱动切分：用上游 parse 统计的素材平均亮度扰动种子
-        brightness = [a.get("mean_brightness") for a in ctx.inputs.get("parsed_assets", {}).get("asset_stats", []) if a.get("mean_brightness") is not None]
-        base_b = sum(brightness) / len(brightness) if brightness else 0.5
-        scene_ids = [f"scene_{rng.randrange(1 << 32):08x}" for _ in range(n)]
-        cut_points = sorted(rng.randrange(1000, 9000) for _ in range(n - 1))
-        lum = [round(min(1.0, max(0.05, base_b + rng.uniform(-0.2, 0.2))), 3) for _ in range(n)]
-        save("scene_brightness.png", artifacts.bar_chart_png(lum), "镜头亮度分布（来自真实素材统计）")
-        return {"scene_ids": scene_ids, "cut_points": cut_points, "scene_luminance": lum,
-                "art_files": art_files}
+        # ── 真实 LLM 节点（OpenAI 兼容；无 Key 时 Mock 模式，结果明确标记 llm_source）──
+        stats_in = ctx.inputs.get("parsed_assets", {}).get("asset_stats", [])
+        bstats = [a.get("mean_brightness") for a in stats_in if a.get("mean_brightness") is not None]
+        mean_b = round(sum(bstats) / len(bstats), 4) if bstats else 0.5
+        from . import llm as llm_mod
+        try:
+            llm_payload = llm_mod.analyze_scenes_via_llm(
+                stats_in, n, mean_b, ctx.input_hash,
+                log_fn=lambda ev, **f: _log(ctx, ev, **f),
+            )
+        except llm_mod.LLMError as e:
+            return {"__step_failed__": True, "error_code": e.error_code,
+                    "error_message": f"LLM 场景分析失败: {e}"}
+        scene_ids = llm_payload["scene_ids"]
+        lum = llm_payload["scene_luminance"]
+        save("scene_brightness.png", artifacts.bar_chart_png(lum),
+             f"镜头亮度分布（{'真实模型' if llm_payload['llm']['llm_source'] == 'real_model' else 'Mock'}输出，参考素材均值 {mean_b}）")
+        return {
+            "scene_ids": scene_ids, "scene_luminance": lum,
+            "cut_points": sorted(rng.randrange(1000, 9000) for _ in range(n - 1)),
+            "scene_descriptions": llm_payload["scene_descriptions"],
+            "scene_durations_s": llm_payload["scene_durations_s"],
+            "llm": llm_payload["llm"],  # 模型名/耗时/尝试/Token 用量/来源标记
+            "art_files": art_files,
+        }
     if ctx.step_type == "generate_clips":
         scenes = ctx.inputs.get("scenes", {})
         lum: list[float] = scenes.get("scene_luminance") or [0.5]
         n = int(cfg["clips_per_scene"]) * len(scenes.get("scene_ids", []))
         clip_ids = [f"clip_{rng.randrange(1 << 32):08x}" for _ in range(max(n, 1))]
-        durations_s = [round(rng.uniform(1.0, 5.0), 2) for _ in range(max(n, 1))]
+        # 时长优先取 LLM 分析结果（真实模型或 Mock 均结构化产出）
+        llm_durs = scenes.get("scene_durations_s")
+        durations_s = [round(llm_durs[i % len(llm_durs)], 2) if llm_durs else round(rng.uniform(1.0, 5.0), 2)
+                       for i in range(max(n, 1))]
         # 真实产物：GIF 动画，每镜头一帧，帧亮度=真实镜头亮度
         def frame_fn(lv: float):
             def f(x: int, y: int) -> tuple[int, int, int]:
@@ -161,28 +181,65 @@ def _mock_payload(ctx: StepContext) -> dict:
         return {"fps": cfg["fps"], "frame_count": frame_count, "codec": "gif-preview",
                 "render_seed": rng.randrange(1 << 32), "art_files": art_files}
     if ctx.step_type == "export_result":
-        # 真实产物：自包含 HTML 报告，内嵌本任务全部前序产物（base64）
+        # 真实产物：自包含 HTML 报告，内嵌本任务全部前序产物（base64）+ LLM 场景分析
         video = ctx.inputs.get("video", {})
         parts = []
         task_dir = os.path.join(ctx.data_dir, "tasks", ctx.task_id, "steps")
+
+        def _load_art(st: str, fname: str) -> bytes | None:
+            d = os.path.join(task_dir, st)
+            if not os.path.isdir(d):
+                return None
+            for att in sorted(os.listdir(d), reverse=True):
+                p = os.path.join(d, att, fname)
+                if os.path.isfile(p):
+                    return open(p, "rb").read()
+            return None
+
+        # LLM 场景分析区块（含真实/Mock 标记与 Token 用量）
+        clips_out = _load_art("generate_clips", "output.json")
+        as_meta = None
+        as_out = _load_art("analyze_scenes", "output.json")
+        if as_out:
+            try:
+                as_meta = json.loads(as_out)["mock_payload"]
+            except Exception:
+                as_meta = None
+        if as_meta:
+            llm_meta = as_meta.get("llm") or {}
+            src = llm_meta.get("llm_source", "unknown")
+            label = "真实模型" if src == "real_model" else ("Mock 模式" if src == "mock" else src)
+            usage = llm_meta.get("llm_usage")
+            usage_txt = (f"{usage.get('prompt_tokens')}+{usage.get('completion_tokens')}={usage.get('total_tokens')} tokens"
+                         if usage and usage.get("total_tokens") else "API 未返回用量")
+            rows = "".join(
+                f"<tr><td>{sid}</td><td>{desc}</td><td class='num'>{lum:.2f}</td><td class='num'>{dur}s</td></tr>"
+                for sid, desc, lum, dur in zip(as_meta.get("scene_ids", []),
+                                                as_meta.get("scene_descriptions", []),
+                                                as_meta.get("scene_luminance", []),
+                                                as_meta.get("scene_durations_s", [])))
+            parts.append(
+                f"<h3>analyze_scenes · LLM 场景分析（{label}：{llm_meta.get('llm_model', '?')}）</h3>"
+                f"<p class='meta'>耗时 {llm_meta.get('llm_duration_ms', '?')}ms · 尝试 #{llm_meta.get('llm_attempt', '?')} · {usage_txt}</p>"
+                f"<table><tr><th>镜头</th><th>描述</th><th>亮度</th><th>时长</th></tr>{rows}</table>")
         for st, fname_hint in (("parse_assets", "assets_overview.png"),
                                 ("analyze_scenes", "scene_brightness.png"),
                                 ("generate_clips", "clips_preview.gif"),
                                 ("generate_audio", "audio_track.wav"),
                                 ("compose_video", "composed.gif")):
-            p = os.path.join(task_dir, st, "attempt_1", fname_hint)
-            if os.path.isfile(p):
-                b64 = base64.b64encode(open(p, "rb").read()).decode()
-                mime = "image/png" if p.endswith(".png") else ("image/gif" if p.endswith(".gif") else "audio/wav")
+            blob = _load_art(st, fname_hint)
+            if blob:
+                b64 = base64.b64encode(blob).decode()
+                mime = "image/png" if fname_hint.endswith(".png") else ("image/gif" if fname_hint.endswith(".gif") else "audio/wav")
                 if mime == "audio/wav":
                     parts.append(f"<h3>{st}</h3><audio controls src='data:{mime};base64,{b64}'></audio>")
                 else:
                     parts.append(f"<h3>{st}</h3><img style='max-width:640px' src='data:{mime};base64,{b64}'>")
         html = f"""<!doctype html><html><head><meta charset='utf-8'><title>RenderFlow 导出报告 {ctx.task_id[:8]}</title>
-<style>body{{font-family:-apple-system,'PingFang SC',sans-serif;max-width:720px;margin:24px auto;padding:0 16px;background:#f7f8fa}}h1{{font-size:20px}}h3{{font-size:14px;color:#3563e9;margin:20px 0 6px}}img{{border-radius:8px;border:1px solid #e2e5ea}}</style>
+<style>body{{font-family:-apple-system,'PingFang SC',sans-serif;max-width:720px;margin:24px auto;padding:0 16px;background:#f7f8fa}}h1{{font-size:20px}}h3{{font-size:14px;color:#3563e9;margin:20px 0 6px}}img{{border-radius:8px;border:1px solid #e2e5ea}}table{{border-collapse:collapse;width:100%;font-size:13px}}td,th{{border:1px solid #e2e5ea;padding:6px 8px;text-align:left}}.num{{text-align:right}}.meta{{color:#68707d;font-size:12px;margin:4px 0}}</style>
 </head><body><h1>RenderFlow 导出报告</h1><p>task {ctx.task_id}<br>workflow export_result · {time.strftime('%Y-%m-%d %H:%M:%S')}</p>
 {''.join(parts)}</body></html>"""
-        save("export_report.html", html.encode(), "自包含 HTML 导出报告（内嵌全部中间产物）")
+        save("export_report.html", html.encode(), "自包含 HTML 导出报告（内嵌 LLM 分析与全部中间产物）")
         return {"format": "html-report", "size_bytes": len(html), "art_files": art_files}
     return {"seed": rng.randrange(1 << 32)}  # 兜底：未知步骤也给确定性输出
 
@@ -244,13 +301,18 @@ def execute(ctx: StepContext, on_tick: Callable[[], None] | None = None) -> Step
                 success=False, error_code=code,
                 error_message=f"故障注入: attempt_no={ctx.attempt_no} 注入 {code}",
             )
+        inner = _mock_payload(ctx)
+        if isinstance(inner, dict) and inner.get("__step_failed__"):
+            _log(ctx, "STEP_END", success=False, error=inner.get("error_message"))
+            return StepResult(success=False, error_code=inner.get("error_code"),
+                              error_message=inner.get("error_message"))
         payload = {
             "step_type": ctx.step_type,
             "task_id": ctx.task_id,
             "attempt_no": ctx.attempt_no,
             "produced_at": time.time(),
             "inputs_digest": ctx.input_hash,
-            "mock_payload": _mock_payload(ctx),
+            "mock_payload": inner,
         }
         _log(ctx, "STEP_END", success=True, ticks=tick_no)
         return StepResult(success=True, output=payload)

@@ -31,6 +31,8 @@
 
 ## 3. 长时间任务、状态管理与失败恢复
 
+**真实 LLM 节点（analyze_scenes）**：调用 OpenAI 兼容 chat/completions（模型/地址/Key 全走环境变量 RENDERFLOW_LLM_*）。输入是 parse_assets 的真实图片解析统计（文件字节、PNG 宽高、实测亮度），输出为结构化场景分析（描述/亮度/时长），经严格 JSON 校验后供 generate_clips/generate_audio 实际消费（时长直接采用 LLM 估值），并进入最终 HTML 报告（含真实/Mock 标记、模型名、耗时、尝试次数、Token 用量）。错误分类对齐现有体系：429→RESOURCE_UNAVAILABLE（可重试）、5xx/网络→TRANSIENT_ERROR、超时→TIMEOUT、非 JSON/结构不符→OUTPUT_INVALID（可重试）、401/403 等配置错误→INVALID_INPUT（不重试）。LLM 内部重试与步骤级重试分层：内部默认 2 次（退避 1s/2s），耗尽后交给步骤重试引擎（沿用租约/fencing/退避）。无 Key 自动 Mock，输出恒标 [MOCK] 与 llm_source=mock——**本仓库测试均为 Mock 或本地假端点验证；真实模型调用需配置 Key 后另行验证（见 §6 状态说明）**。at-least-once：模型调用成功但结果持久化前 Worker 崩溃，恢复后会再次调用模型（外部副作用不可消除，靠幂等 prompt+缓存降低重复概率，不宣称 exactly-once）。
+
 - 独立 Worker：Web 进程只读写 DB，不做计算——API 重启不影响执行中任务，Worker 崩溃不影响查询。
 - 双层状态机：任务状态是步骤状态的汇总视图（统一函数 summarize_task，单一实现），二者职责分离——步骤管执行事实（attempt/租约/重试），任务管用户视角（进度/终态/取消）。终态带 WHERE 守卫不可逆，杜绝旧 Worker 或重复请求覆盖。
 - 租约/心跳/回收：Worker 领取时获得 lease_until；执行分片循环按 heartbeat_seconds 续租；只有 lease_until 真正过期才回收（租约即宽限期，不凭单次心跳缺失判死）。回收是单事务：补记旧 attempt 为 WORKER_INTERRUPTED → lease_version+1 → 新 attempt 接管。
@@ -72,6 +74,8 @@ DB 与文件分工：状态/元数据/事件在 DB（可查询）；大体积产
 
 ## 6. AI Coding 工具与 Token 用量（如实）
 
+**LLM 节点状态说明**：仓库内 analyze_scenes 的"真实模式"经由本地假 OpenAI 兼容端点完成协议级验证（鉴权头、请求结构、429/超时/非法输出分类、Token 用量解析、日志不含密钥）；**真实外部模型（如 GLM/OpenAI 生产端点）调用尚未执行**，需在部署环境配置 RENDERFLOW_LLM_BASE_URL/MODEL/API_KEY 三个环境变量后运行一次任务验证（HTML 报告与 run.log 将出现 llm_source=real_model 与真实 Token 用量）。在此之前，一切 LLM 结果均为明确标记的 Mock，不冒充真实模型输出。
+
 实际使用：Claude Code CLI（后端 GLM-5.3 后端）完成 W1/W2 两个波次；Hermes Agent（GLM-5.3）承担架构设计、任务书编写、W3/W4/W5 开发与全部验证。
 
 可获取的 Token 统计（来源：claude -p --output-format json 的 usage 字段原始记录，存于 docs/logs/）：
@@ -109,7 +113,7 @@ W2 消耗最多（长任务书+多轮测试修复循环）。**未获取完整 T
 
 环境：macOS 15.5 / Python 3.11.15（uv venv）/ Node 24.16 / pytest。
 
-- 后端自动化测试：**26 passed, 1 warning in 23.4s**（含 4 个真实 SIGKILL 子进程恢复测试：执行中杀 Worker→租约过期→新进程接管→任务完成且已成功步骤零重跑；crash 注入重启；双真实 Worker 并行 6 步恰 6 次领取；中断后重连历史完整）
+- 后端自动化测试：**32 passed**（26 管线 + 6 LLM 节点，含 4 个真实 SIGKILL 子进程恢复测试：执行中杀 Worker→租约过期→新进程接管→任务完成且已成功步骤零重跑；crash 注入重启；双真实 Worker 并行 6 步恰 6 次领取；中断后重连历史完整）
 - 前端：tsc -b && vite build 零错误（241.93 kB js / gzip 75.46 kB）
 - 五个演示脚本发布前重跑全部 **DEMO OK**（正常执行/首败重试恢复/真实杀进程重启恢复/缓存命中 6/6+输入变化 0 命中/重试耗尽→手动重试成功）
 - 关键故障场景验证方式：故障注入 env 生效门（RENDERFLOW_ALLOW_FAULT_INJECTION=1）+ pytest 毫秒级配置压缩耗时

@@ -17,6 +17,7 @@
 ## 2. 功能清单
 
 ✅ 6 步 DAG 工作流（依赖校验、步骤级调度）
+✅ **真实 LLM 任务节点**：analyze_scenes 调用 OpenAI 兼容 API（如 GLM/OpenAI），输入为上一步真实图片解析统计，输出结构化场景分析；无 Key 自动 Mock 模式（结果明确标记，不冒充真实）；下游步骤与 HTML 报告实际消费该结果；LLM 调用全程可观测（模型名/耗时/尝试次数/Token 用量/错误分类/重试原因），密钥不落日志
 ✅ 任务/步骤双层状态机（非法迁移拒绝、终态不可覆盖、下游 SKIPPED 防永久 RUNNING）
 ✅ 原子步骤领取（BEGIN IMMEDIATE 事务内 SELECT+UPDATE+INSERT attempt）
 ✅ 租约心跳 + 过期回收 + lease_version fencing（旧 Worker 提交被拒，T11）
@@ -79,16 +80,19 @@ DAG：parse_assets → analyze_scenes → {generate_clips ∥ generate_audio} �
 五表见 backend/renderflow/db.py（SCHEMA_MIGRATIONS 列表式迁移 V1/V2，启动幂等执行，python -m renderflow.db 手动初始化）：
 tasks、task_steps（UNIQUE(task_id,step_type)、INDEX(status,lease_until)）、step_attempts（UNIQUE(step_id,attempt_no)）、step_cache（cache_key PK、INDEX(expires_at)）、task_events（INDEX(task_id,created_at)）。外键 ON DELETE CASCADE。心跳不逐条入库：task_steps.heartbeat_at 覆盖式更新（只保留最近），完整诊断走 JSON 行式文件日志（data/logs）。时间戳存 UTC epoch REAL，API 层转 ISO8601。
 
-## 7. 安装 / 启动 / 停止 / 测试
+## 7. 安装 / 启动 / 测试
 
 ```bash
 make install        # backend: uv venv(3.11) + pip install -e ".[dev]"；前端: npm install（frontend/）
 make dev-api        # uvicorn renderflow.api:app --port 8900
 make dev-worker     # python -m renderflow.worker（独立进程，可起多个）
 # 前端：cd frontend && npm run dev  → http://localhost:5173（已配代理到 8900）
-make test           # pytest -q（26 个测试，约 24s）
+make test           # pytest -q（32 个测试：26 管线 + 6 LLM 节点）
 make demo-1 ... demo-5 / demo-all
 ```
+
+**启用真实 LLM（可选）**：复制 .env.example 为 .env，配置三个环境变量：
+`RENDERFLOW_LLM_BASE_URL`（如 https://open.bigmodel.cn/api/paas/v4）、`RENDERFLOW_LLM_MODEL`（如 glm-4-flash）、`RENDERFLOW_LLM_API_KEY`（只经环境变量注入，勿提交）。API 与 Worker 进程都要读到这些变量。三项任一为空时自动运行 Mock 模式——Mock 输出恒定带 `[MOCK]` 标记与 `llm_source=mock` 元数据，与真实模型结果（`llm_source=real_model`，含真实 Token 用量）在任何界面/报告/日志中均可区分。
 停止：Ctrl+C / kill（Worker 收 SIGTERM 后完成当前步骤优雅退出）。OpenAPI 文档：http://127.0.0.1:8900/api/docs
 
 ## 8. 故障注入演示（真实输出可复现）
@@ -106,7 +110,7 @@ make demo-5  # 重试耗尽（max_attempts=1）→ 任务 FAILED + 下游 SKIPPE
 
 ## 9. 自动化测试结果（2026-10-12 实际运行）
 
-**26 passed, 1 warning in 23.51s**（Python 3.11 / macOS 15.5；唯一 warning 为 starlette 上游弃用提示）
+**32 passed**（26 管线 + 6 LLM 节点；LLM 测试用本地假 OpenAI 端点，Mock 测试验证标记不冒充）。真实外部模型调用：**待配置 API Key 后验证**（未验证前不宣称真实模型跑通；本地假端点已验证协议兼容性：Bearer 头/请求体/429/非法输出/Token 用量解析）。
 
 | 文件 | 覆盖 |
 |---|---|
@@ -116,6 +120,7 @@ make demo-5  # 重试耗尽（max_attempts=1）→ 任务 FAILED + 下游 SKIPPE
 | test_process_recovery.py | T9 真实 SIGKILL 恢复 / T9b crash 注入重启 / T9c 双真实 Worker 并行（6 步恰 6 次领取）/ T9d 中断后重连历史完整 |
 | test_cache.py | T13 命中 / T14 输入变失效 / T15 版本变失效 / T16 文件损坏清行 |
 | test_concurrency.py | T17 两 Worker 恰好一次 / T18 十并发重试幂等 / T19 busy 渡锁 |
+| test_llm.py | Mock 标记不冒充 / 本地假端点真实调用（Bearer+Token 用量+密钥不落日志）/ 429 限流重试 / 非法输出重试 / 限流耗尽→FAILED→手动恢复 / LLM 调用中 Worker SIGKILL 恢复 |
 | test_cancel.py | T20a 取消 / T20b 终态 409 / T20c 取消绝不误标成功 + RUNNING 检查点取消 |
 
 前端：tsc -b && vite build 零错误；三页面经无头 Chrome + 真实后端联调验证（列表 3 任务真实数据、详情 DAG/事件时间线、尝试详情页含缓存命中证据链）。
