@@ -11,6 +11,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import dao, db, workflow
 from .config import Settings, get_settings
+from .exceptions import DaoConflictError
 from .schemas import TaskCreateRequest, err, ok, ts
 from .state_machine import summarize_task
 
@@ -40,6 +41,8 @@ def _task_json(row, steps) -> dict:
         "total_steps": len(steps),
         "input": input_payload,
         "step_durations": durations,
+        # 故障注入随任务持久化，详情 echo 出来便于演示（生效门在创建时把关）
+        "fault_injection": dao.task_faults_of(row),
         "workflow_version": row["workflow_version"],
         "cancel_requested": bool(row["cancel_requested"]),
         "error_summary": row["error_summary"],
@@ -153,6 +156,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def _db_error(_req: Request, exc: sqlite3.Error):
         return JSONResponse(status_code=500, content=err("INTERNAL_ERROR", f"数据库错误: {exc}"))
 
+    @app.exception_handler(DaoConflictError)
+    async def _dao_conflict(_req: Request, exc: DaoConflictError):
+        return JSONResponse(status_code=409, content=err(exc.code, exc.message))
+
     def _conn() -> sqlite3.Connection:
         return app.state.conn
 
@@ -164,12 +171,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/api/tasks")
     def create_task(body: TaskCreateRequest):
+        # 故障注入生效门：环境开关未开则忽略该字段并在响应中注明
+        faults, ignored = body.fault_injection or {}, False
+        if faults and not st.allow_fault_injection:
+            faults, ignored = {}, True
         task_id = dao.create_task(
             _conn(), body.input.model_dump(), body.step_durations or {},
             body.workflow_version or workflow.WORKFLOW_VERSION, log_dir=st.log_dir,
+            fault_injection=faults or None,
         )
         steps = dao.list_steps(_conn(), task_id)
-        return ok({"task_id": task_id, "steps": [_step_overview(s) for s in steps]})
+        return ok({
+            "task_id": task_id, "steps": [_step_overview(s) for s in steps],
+            "fault_injection": faults, "fault_injection_ignored": ignored,
+        })
 
     @app.get("/api/tasks")
     def list_tasks(
@@ -220,6 +235,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if step is None:
             raise ApiError(404, "NOT_FOUND", f"步骤不存在: {step_id}")
         return ok([_attempt_json(a) for a in dao.list_attempts(_conn(), step_id)])
+
+    @app.post("/api/steps/{step_id}/retry")
+    def retry_step(step_id: str):
+        """手动重试：FAILED/RETRY_WAIT → READY，attempt_count 归零（历史保留）。
+
+        并发重复请求幂等（事务串行化 + manual_retry_count 判重）；
+        依赖不满足 / 状态不允许由 DAO 抛 DaoConflictError → 409。
+        """
+        if dao.get_step(_conn(), step_id) is None:
+            raise ApiError(404, "NOT_FOUND", f"步骤不存在: {step_id}")
+        result = dao.retry_step(_conn(), step_id, log_dir=st.log_dir)
+        return ok(result)
+
+    @app.post("/api/tasks/{task_id}/cancel")
+    def cancel_task(task_id: str):
+        """请求取消：未开始步骤立即 SKIPPED(CANCELLED_BY_USER)，RUNNING 走检查点。"""
+        _get_task_or_404(task_id)
+        result = dao.request_cancel(_conn(), task_id, log_dir=st.log_dir)
+        return ok(result)
 
     @app.get("/api/health")
     def health():

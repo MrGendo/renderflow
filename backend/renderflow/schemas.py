@@ -20,6 +20,9 @@ class TaskCreateRequest(BaseModel):
     input: TaskInput
     step_durations: dict[str, int] | None = None  # 按步骤覆盖 MOCK 时长（毫秒）
     workflow_version: str | None = None
+    # 故障注入（仅测试/演示）：{"<step_type>": {"fail_first_n_attempts": 1, ...}}
+    # 生效门在 API 层：RENDERFLOW_ALLOW_FAULT_INJECTION=1 才解析，否则忽略
+    fault_injection: dict[str, dict[str, Any]] | None = None
 
 
 def ok(data: Any) -> dict:

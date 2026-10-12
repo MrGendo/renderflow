@@ -6,9 +6,15 @@ locked/busy 指数退避重试），避免多处各写一套事务代码。
 
 import os
 import sqlite3
+import threading
 import time
 
 from .config import Settings, get_settings
+
+# 同一连接的写事务必须进程内串行：FastAPI 线程池并发请求共用一条连接，
+# 无锁会触发 "cannot start a transaction within a transaction"。
+# 跨进程（API 进程 + Worker 进程）仍由 SQLite 文件锁兜底。
+_TX_LOCK = threading.RLock()
 
 # W1 唯一一条迁移：五张表 + 索引。字段严格对齐 docs/PLAN.md 第 2 节。
 _SCHEMA_V1 = """
@@ -104,6 +110,8 @@ CREATE INDEX IF NOT EXISTS idx_task_events_task ON task_events(task_id, created_
 # (版本号, 迁移说明, DDL)；新增迁移只追加，不改历史条目
 SCHEMA_MIGRATIONS = [
     (1, "W1 初始建表：tasks/task_steps/step_attempts/step_cache/task_events + 索引", _SCHEMA_V1),
+    # W2：手动重试幂等标记（attempt_count 归零语义下区分"已重试"与"从未失败"）
+    (2, "W2 task_steps 增加 manual_retry_count", "ALTER TABLE task_steps ADD COLUMN manual_retry_count INTEGER NOT NULL DEFAULT 0;"),
 ]
 
 
@@ -145,25 +153,26 @@ def run_tx(conn: sqlite3.Connection, fn, retries: int = 5):
     """
     delay = 0.05
     last_err: sqlite3.OperationalError | None = None
-    for attempt in range(retries + 1):
-        try:
-            conn.execute("BEGIN IMMEDIATE")
+    with _TX_LOCK:
+        for attempt in range(retries + 1):
             try:
-                result = fn(conn)
-            except BaseException:
-                conn.execute("ROLLBACK")
+                conn.execute("BEGIN IMMEDIATE")
+                try:
+                    result = fn(conn)
+                except BaseException:
+                    conn.execute("ROLLBACK")
+                    raise
+                conn.execute("COMMIT")
+                return result
+            except sqlite3.OperationalError as err:
+                # 仅对锁冲突退避重试；BEGIN 失败时事务未开，直接重来
+                msg = str(err).lower()
+                if ("locked" in msg or "busy" in msg) and attempt < retries:
+                    last_err = err
+                    time.sleep(delay)
+                    delay *= 2
+                    continue
                 raise
-            conn.execute("COMMIT")
-            return result
-        except sqlite3.OperationalError as err:
-            # 仅对锁冲突退避重试；BEGIN 失败时事务未开，直接重来
-            msg = str(err).lower()
-            if ("locked" in msg or "busy" in msg) and attempt < retries:
-                last_err = err
-                time.sleep(delay)
-                delay *= 2
-                continue
-            raise
     raise last_err  # pragma: no cover 理论不可达，仅类型兜底
 
 

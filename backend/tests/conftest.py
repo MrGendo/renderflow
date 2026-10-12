@@ -20,6 +20,10 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setenv("RENDERFLOW_POLL_INTERVAL_MS", "20")
     monkeypatch.setenv("RENDERFLOW_LEASE_SECONDS", "5")
     monkeypatch.setenv("RENDERFLOW_HEARTBEAT_SECONDS", "1")
+    # W2：毫秒级退避（全套测试 < 120s 的关键）+ 故障注入生效门
+    monkeypatch.setenv("RENDERFLOW_RETRY_BACKOFF_BASE_S", "0.01")
+    monkeypatch.setenv("RENDERFLOW_RETRY_BACKOFF_MAX_S", "0.05")
+    monkeypatch.setenv("RENDERFLOW_ALLOW_FAULT_INJECTION", "1")
     config.reset_settings()
     yield get_settings()
     config.reset_settings()
@@ -42,10 +46,26 @@ def client(env):
 
 
 def run_to_terminal(conn, settings: Settings, task_id: str, max_steps: int = 60) -> str:
-    """循环调用 worker 单步推进直到任务进入终态（直接调函数，不起子进程）。"""
+    """循环调用 worker 单步推进直到任务进入终态（直接调函数，不起子进程）。
+
+    空转轮小睡：RETRY_WAIT 的 next_retry_at 是毫秒级退避，不睡会空烧完轮数。
+    """
+    import time as _time
     for _ in range(max_steps):
         row = dao.get_task(conn, task_id)
         if row["status"] in TERMINAL:
             return row["status"]
-        worker.run_once(conn, settings, "test-worker")
+        if not worker.run_once(conn, settings, "test-worker"):
+            _time.sleep(0.005)
     return dao.get_task(conn, task_id)["status"]
+
+
+def create_with_faults(client, faults: dict, input_payload: dict | None = None) -> str:
+    """带故障注入创建任务并返回 task_id（W2 测试共用）。"""
+    body = {"input": input_payload or {"assets": ["hero.png", "bg.png", "cat.gif"]},
+            "fault_injection": faults}
+    resp = client.post("/api/tasks", json=body)
+    assert resp.status_code == 200, resp.text
+    data = resp.json()["data"]
+    assert data["fault_injection_ignored"] is False  # conftest 已打开生效门
+    return data["task_id"]

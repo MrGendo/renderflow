@@ -33,6 +33,11 @@ def compute_config_hash(step_version: str, config: dict) -> str:
     return sha256_hex(canonical_json([step_version, config]))
 
 
+def cache_key(step_type: str, input_hash: str, step_version: str, config_hash: str) -> str:
+    """缓存键：任一维度变化（输入/版本/配置）即失效。v1 前缀留升级余地。"""
+    return sha256_hex("|".join(["v1", step_type, input_hash, step_version, config_hash]))
+
+
 # build_input：下游步骤的输入只引用上游输出的 mock_payload（确定性部分），
 # 不含 task_id/produced_at 等易变字段——否则跨任务的缓存命中（W2）永远不可能成立。
 

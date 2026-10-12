@@ -13,18 +13,21 @@ ALLOWED_TASK_TRANSITIONS: dict[TaskStatus, set[TaskStatus]] = {
     TaskStatus.RUNNING: {TaskStatus.RETRY_WAIT, TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.CANCELLED},
     TaskStatus.RETRY_WAIT: {TaskStatus.RUNNING, TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.CANCELLED},
     TaskStatus.SUCCEEDED: set(),
-    TaskStatus.FAILED: set(),
+    # W2：手动重试是唯一允许的 FAILED 终态撤销路径（DAO 用显式 WHERE status='FAILED' 守卫）
+    TaskStatus.FAILED: {TaskStatus.RUNNING},
     TaskStatus.CANCELLED: set(),
 }
 
 ALLOWED_STEP_TRANSITIONS: dict[StepStatus, set[StepStatus]] = {
     StepStatus.PENDING: {StepStatus.READY, StepStatus.SKIPPED},
     StepStatus.READY: {StepStatus.RUNNING, StepStatus.SKIPPED},
-    StepStatus.RUNNING: {StepStatus.SUCCEEDED, StepStatus.RETRY_WAIT, StepStatus.FAILED},
-    StepStatus.RETRY_WAIT: {StepStatus.RUNNING, StepStatus.FAILED, StepStatus.SKIPPED},
+    # W2：RUNNING→SKIPPED 供取消检查点（executor 主动中止后标 CANCELLED_BY_USER）
+    StepStatus.RUNNING: {StepStatus.SUCCEEDED, StepStatus.RETRY_WAIT, StepStatus.FAILED, StepStatus.SKIPPED},
+    # W2：RETRY_WAIT→READY 供到期推进；FAILED→READY / SKIPPED→PENDING 供手动重试撤销终态
+    StepStatus.RETRY_WAIT: {StepStatus.READY, StepStatus.RUNNING, StepStatus.FAILED, StepStatus.SKIPPED},
     StepStatus.SUCCEEDED: set(),
-    StepStatus.FAILED: set(),
-    StepStatus.SKIPPED: set(),
+    StepStatus.FAILED: {StepStatus.READY},
+    StepStatus.SKIPPED: {StepStatus.PENDING},
 }
 
 TERMINAL_TASK_STATUSES = (TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.CANCELLED)

@@ -1,16 +1,19 @@
 """MOCK 步骤执行器：分片 sleep + 由 input_hash 种子生成的确定性伪输出。
 
-W1 只实现成功路径；错误分类/故障注入在 W2 通过 execute 的失败分支填充。
+W2 增量：故障注入（fail_first_n_attempts/always_fail/timeout_after_s/crash_worker）、
+步骤超时熔断、控制流异常（LeaseLostError/StepCancelledError）直接上抛给 Worker。
 """
 
+import os
 import random
 import time
 from dataclasses import dataclass, field
 from typing import Callable
 
 from . import storage, workflow
+from .exceptions import LeaseLostError, StepCancelledError
 
-_TICK_S = 0.1  # 分片时长：100ms，W2 在片间隙插入心跳/取消检查
+_TICK_S = 0.1  # 分片时长：100ms，片间隙是心跳/取消/中止检查点
 
 
 @dataclass
@@ -25,6 +28,8 @@ class StepContext:
     duration_ms: int
     log_ref: str  # run.log 相对路径
     data_dir: str
+    timeout_s: float = 30.0  # 步骤超时熔断（spec.timeout_s）
+    faults: dict = field(default_factory=dict)  # 该步骤的故障注入配置
 
 
 @dataclass
@@ -81,20 +86,57 @@ def _log(ctx: StepContext, event: str, **extra) -> None:
 
 
 def execute(ctx: StepContext, on_tick: Callable[[], None] | None = None) -> StepResult:
-    """执行一个分片 sleep 的 MOCK 步骤。on_tick 每片回调（Worker 用于续租心跳）。"""
+    """执行一个分片 sleep 的 MOCK 步骤。
+
+    - on_tick 每片回调（Worker 用于续租心跳 + 取消检查）
+    - LeaseLostError/StepCancelledError 是控制流信号，不吞、直接上抛
+    - 故障注入仅在测试/演示生效（API 层 RENDERFLOW_ALLOW_FAULT_INJECTION 生效门已拦截）
+    """
+    fault = ctx.faults or {}
+    # 模拟"执行卡死"：sleep 满 timeout_after_s 后以 TIMEOUT 失败（与超时熔断同码）
+    fault_timeout_s = fault.get("timeout_after_s")
     try:
-        _log(ctx, "STEP_START", attempt_id=ctx.attempt_id, duration_ms=ctx.duration_ms)
-        deadline = time.monotonic() + ctx.duration_ms / 1000.0
+        _log(ctx, "STEP_START", attempt_id=ctx.attempt_id, duration_ms=ctx.duration_ms,
+             faults=fault or None)
+        start = time.monotonic()
+        deadline = start + ctx.duration_ms / 1000.0
+        hard_deadline = start + ctx.timeout_s
+        fault_deadline = start + float(fault_timeout_s) if fault_timeout_s is not None else None
+        if fault_deadline is not None:
+            deadline = min(deadline, fault_deadline)
         tick_no = 0
         while True:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
+            now_m = time.monotonic()
+            if now_m >= deadline:
                 break
-            time.sleep(min(_TICK_S, remaining))
+            if now_m >= hard_deadline:
+                _log(ctx, "STEP_END", success=False, error="step timeout")
+                return StepResult(
+                    success=False, error_code="TIMEOUT",
+                    error_message=f"步骤超过 timeout_s={ctx.timeout_s}s 被熔断",
+                )
+            time.sleep(min(_TICK_S, deadline - now_m, hard_deadline - now_m))
             tick_no += 1
+            if fault.get("crash_worker"):
+                _log(ctx, "WORKER_CRASH", exit_code=137)
+                os._exit(137)  # 模拟进程被 SIGKILL：不做任何清理，租约留给回收器
             if on_tick:
                 on_tick()
             _log(ctx, "TICK", tick=tick_no)
+        if fault_deadline is not None and deadline == fault_deadline:
+            # min() 精确返回 fault_deadline 即故障超时先到（而非正常完成）
+            _log(ctx, "STEP_END", success=False, error="fault timeout_after_s")
+            return StepResult(
+                success=False, error_code="TIMEOUT",
+                error_message=f"故障注入: 执行 {fault_timeout_s}s 后超时",
+            )
+        if fault.get("always_fail") or ctx.attempt_no <= int(fault.get("fail_first_n_attempts", 0)):
+            code = fault.get("failure_type", "TRANSIENT_ERROR")
+            _log(ctx, "STEP_END", success=False, error=f"fault injection: {code}")
+            return StepResult(
+                success=False, error_code=code,
+                error_message=f"故障注入: attempt_no={ctx.attempt_no} 注入 {code}",
+            )
         payload = {
             "step_type": ctx.step_type,
             "task_id": ctx.task_id,
@@ -105,6 +147,8 @@ def execute(ctx: StepContext, on_tick: Callable[[], None] | None = None) -> Step
         }
         _log(ctx, "STEP_END", success=True, ticks=tick_no)
         return StepResult(success=True, output=payload)
-    except Exception as err:  # W1 统一按 INTERNAL_ERROR 上抛给 Worker 记账
+    except (LeaseLostError, StepCancelledError):
+        raise  # 控制流信号：Worker 负责放弃步骤 / 标记取消
+    except Exception as err:
         _log(ctx, "STEP_END", success=False, error=str(err))
         return StepResult(success=False, error_code="INTERNAL_ERROR", error_message=repr(err))

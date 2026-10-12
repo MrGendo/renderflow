@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     step_duration_ms: int = 800
     lease_seconds: float = 15.0
     heartbeat_seconds: float = 5.0
+    # W2 增量：重试退避 / 结果缓存 / 故障注入开关
+    retry_backoff_base_s: float = 1.0
+    retry_backoff_max_s: float = 30.0
+    cache_ttl_seconds: float = 86400.0
+    cache_enabled: bool = True
+    allow_fault_injection: bool = False
 
 
 @lru_cache
