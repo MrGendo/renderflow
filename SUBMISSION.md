@@ -74,7 +74,7 @@ DB 与文件分工：状态/元数据/事件在 DB（可查询）；大体积产
 
 ## 6. AI Coding 工具与 Token 用量（如实）
 
-**LLM 节点状态说明**：仓库内 analyze_scenes 的"真实模式"经由本地假 OpenAI 兼容端点完成协议级验证（鉴权头、请求结构、429/超时/非法输出分类、Token 用量解析、日志不含密钥）；**真实外部模型（如 GLM/OpenAI 生产端点）调用尚未执行**，需在部署环境配置 RENDERFLOW_LLM_BASE_URL/MODEL/API_KEY 三个环境变量后运行一次任务验证（HTML 报告与 run.log 将出现 llm_source=real_model 与真实 Token 用量）。在此之前，一切 LLM 结果均为明确标记的 Mock，不冒充真实模型输出。
+**LLM 节点状态说明**：✅ **真实外部模型已验证（2026-10-12 16:43，glm-4-flash，证据 docs/evidence/llm_real_call_evidence.json + 10/11 截图）**——真实任务 2104ce06 上传亮/暗两张真实 PNG，analyze_scenes 调用 https://open.bigmodel.cn/api/paas/v4 成功：llm_source=real_model、耗时 6010ms、Token 用量 257(prompt)+189(completion)=446（API 真实返回），模型输出真实区分了图片内容（明亮海滩 0.80/3s vs 昏暗夜晚 0.14/5s），下游 generate_clips 实际消费 LLM 时长，HTML 报告/前端/run.log 三处均展示真实模型元数据且密钥未泄漏。仓库自动化测试（tests/test_llm.py）另用本地假 OpenAI 端点覆盖协议细节与故障分支（429/超时/非法输出/限流耗尽/SIGKILL 恢复），Mock 模式测试验证标记不冒充。
 
 实际使用：Claude Code CLI（后端 GLM-5.3 后端）完成 W1/W2 两个波次；Hermes Agent（GLM-5.3）承担架构设计、任务书编写、W3/W4/W5 开发与全部验证。
 

@@ -1,6 +1,15 @@
 # 本地运行证据（Local Run Evidence）
 
-生成时间：2026-10-12 14:4x 与 15:2x-15:3x（CST）｜生成方式：真实进程运行 + CDP 无头浏览器截图，非 mock。
+生成时间：2026-10-12 14:4x ~ 16:4x（CST）｜生成方式：真实进程运行 + CDP 无头浏览器截图，非 mock。
+
+## 真实 LLM 调用验证（glm-4-flash，已验证）
+
+**llm_real_call_evidence.json + 10_llm_real_report.png + 11_llm_real_frontend.png + llm_real_report_sample.html**
+任务 2104ce06（2026-10-12 16:43）：上传真实 PNG（亮/暗各一张）→ analyze_scenes 调用 GLM 真实端点 →
+模型元数据：llm_source=real_model、model=glm-4-flash、耗时 6010ms、**Token 用量 257+189=446（API 真实返回）**；
+模型输出真实理解了图片内容：「海滩场景，画面明亮」(0.80/3s) vs「夜晚场景，画面昏暗」(0.14/5s)；
+下游 generate_clips 实际消费了 LLM 时长估值；HTML 报告与前端步骤展开均展示真实模型块；run.log 有 LLM_CALL_OK 且密钥未泄漏。
+（Mock 与真实模式的区别在任何界面恒定可见：llm_source=mock 输出带 [MOCK] 前缀且无 Token 用量。）
 
 ## 真实素材与真实产物（新增）
 

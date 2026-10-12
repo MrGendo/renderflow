@@ -1,0 +1,46 @@
+{
+  "case": "REAL GLM model call on analyze_scenes",
+  "task_id": "2104ce06ad3f43b38e6835229322a70e",
+  "verified_at": "2026-10-12 16:43:02",
+  "llm": {
+    "llm_attempt": 1,
+    "llm_duration_ms": 6010,
+    "llm_mode": "real",
+    "llm_model": "glm-4-flash",
+    "llm_output_summary": "海滩场景，画面明亮，平均亮度较高 | 夜晚场景，画面昏暗，平均亮度较低 | 海滩场景，画面明亮，平均亮度较高 …",
+    "llm_prompt_digest": "000196e9",
+    "llm_source": "real_model",
+    "llm_usage": {
+      "completion_tokens": 189,
+      "prompt_tokens": 257,
+      "total_tokens": 446
+    }
+  },
+  "scenes": [
+    {
+      "id": "scene_1",
+      "desc": "海滩场景，画面明亮，平均亮度较高",
+      "lum": 0.799,
+      "dur": 3.0
+    },
+    {
+      "id": "scene_2",
+      "desc": "夜晚场景，画面昏暗，平均亮度较低",
+      "lum": 0.14,
+      "dur": 5.0
+    },
+    {
+      "id": "scene_3",
+      "desc": "海滩场景，画面明亮，平均亮度较高",
+      "lum": 0.799,
+      "dur": 4.0
+    },
+    {
+      "id": "scene_4",
+      "desc": "夜晚场景，画面昏暗，平均亮度较低",
+      "lum": 0.14,
+      "dur": 2.0
+    }
+  ],
+  "artifacts_html": "tasks/2104ce06ad3f43b38e6835229322a70e/steps/export_result/*/export_report.html"
+}
