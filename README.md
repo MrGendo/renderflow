@@ -4,7 +4,7 @@
 
 **公开仓库**：https://github.com/MrGendo/renderflow
 **交付说明**：[SUBMISSION.md](SUBMISSION.md)（评审入口：设计取舍 / 真实性声明 / 测试与时间记录）
-**公网 Demo**：待部署（部署配置 render.yaml + Dockerfile 已就绪，所需操作见 SUBMISSION.md §10）
+**运行证据**：[docs/evidence/](docs/evidence/README.md)——本地生产形态真实运行：8/8 检查通过（含真实 SIGKILL 恢复）+ 6 张界面截图 + Worker/API 日志（公网 Demo 待部署，见 SUBMISSION.md §10）
 **API 文档**（本地启动后）：http://127.0.0.1:8900/api/docs
 
 > 状态标记：✅ 已实现并有自动化测试覆盖 | 🧪 已实现（演示脚本/冒烟验证）| 📋 仅有设计方案（未实现）

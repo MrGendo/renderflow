@@ -7,8 +7,9 @@
 
 - 项目名称：RenderFlow
 - 一句话介绍：可恢复、可观测的 AI 动画素材处理任务管线 MVP——步骤级租约调度、失败重试、进程中断恢复、结果缓存与全程可观测。
-- 公开源码仓库：https://github.com/MrGendo/renderflow（Public，已验证匿名可访问仓库页/README/前后端源码/测试/演示脚本）
-- 公网 Demo：**待部署**（部署配置已备好：render.yaml + Dockerfile + start_prod.sh；阻塞原因与所需操作见 §10，未编造 URL）
+- 公开源码仓库：https://github.com/MrGendo/renderflow（Public，已验证匿名可访问仓库页/README/前后端源码/测试/演示脚本/SUBMISSION.md）
+- 本地运行证据：https://github.com/MrGendo/renderflow/tree/main/docs/evidence ——8/8 检查通过（含真实 SIGKILL Worker 恢复）、6 张 2880×1800 界面截图、Worker/API 日志（生产单域名形态，FastAPI 托管前端）
+- 公网 Demo：**待部署**（按交付口径以本地真实运行证据替代；部署配置 render.yaml + Dockerfile + start_prod.sh 已就绪，阻塞原因与所需操作见 §10，未编造 URL）
 - API 文档（本地运行后）：http://127.0.0.1:8900/api/docs（FastAPI 自动生成 OpenAPI）
 - 测试与演示说明：仓库 README §7-§9（make test / make demo-1..5）
 
