@@ -190,7 +190,83 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return ok({
             "task_id": task_id, "steps": [_step_overview(s) for s in steps],
             "fault_injection": faults, "fault_injection_ignored": ignored,
+            "upload_url": f"/api/tasks/{task_id}/assets",
         })
+
+    @app.post("/api/tasks/{task_id}/assets")
+    async def upload_assets(task_id: str, request: Request):
+        """上传真实素材文件（multipart）。存入 data/uploads/<task_id>/ 并登记到任务 input。"""
+        if dao.get_task(_conn(), task_id) is None:
+            raise ApiError(404, "NOT_FOUND", f"任务不存在: {task_id}")
+        import io
+        import uuid
+        from fastapi.responses import JSONResponse
+
+        ctype = request.headers.get("content-type", "")
+        saved: list[str] = []
+        updir = os.path.join(st.data_dir, "uploads", task_id)
+        if ctype.startswith("multipart/form-data"):
+            form = await request.form()
+            os.makedirs(updir, exist_ok=True)
+            for key in form:
+                item = form[key]
+                fname = getattr(item, "filename", None)
+                if not fname:
+                    continue
+                name = os.path.basename(fname)
+                data = await item.read()
+                if len(data) > 32 * 1024 * 1024:
+                    raise ApiError(400, "INVALID_INPUT", f"文件过大(>32MB): {name}")
+                with open(os.path.join(updir, name), "wb") as f:
+                    f.write(data)
+                saved.append(name)
+        elif ctype.startswith("application/octet-stream"):
+            os.makedirs(updir, exist_ok=True)
+            data = await request.body()
+            name = request.query_params.get("name") or f"upload_{uuid.uuid4().hex[:8]}.bin"
+            name = os.path.basename(name)
+            if len(data) > 32 * 1024 * 1024:
+                raise ApiError(400, "INVALID_INPUT", "文件过大(>32MB)")
+            with open(os.path.join(updir, name), "wb") as f:
+                f.write(data)
+            saved.append(name)
+        else:
+            raise ApiError(400, "INVALID_INPUT", "需 multipart/form-data 或 octet-stream")
+        # 把上传文件名合并进任务 input.assets（真实文件驱动 parse_assets）
+        if saved:
+            dao.merge_task_assets(_conn(), task_id, saved)
+        return ok({"task_id": task_id, "saved": saved,
+                   "files": [{"name": n, "bytes": os.path.getsize(os.path.join(st.data_dir, "uploads", task_id, n))} for n in saved]})
+
+    @app.get("/api/tasks/{task_id}/artifacts/{step_type}/{name}")
+    def get_artifact(task_id: str, step_type: str, name: str):
+        """下载步骤产物（PNG/GIF/WAV/HTML）。路径限定在 attempt 目录内。"""
+        task = dao.get_task(_conn(), task_id)
+        if task is None:
+            raise ApiError(404, "NOT_FOUND", f"任务不存在: {task_id}")
+        # 找该步骤最新成功 attempt 的产物目录
+        row = _conn().execute(
+            "SELECT s.step_id FROM task_steps s WHERE s.task_id=? AND s.step_type=?",
+            (task_id, step_type),
+        ).fetchone()
+        if row is None:
+            raise ApiError(404, "NOT_FOUND", f"步骤不存在: {step_type}")
+        att = _conn().execute(
+            "SELECT output_ref FROM step_attempts WHERE step_id=? AND status='SUCCEEDED'"
+            " ORDER BY attempt_no DESC LIMIT 1", (row["step_id"],),
+        ).fetchone()
+        if att is None:
+            raise ApiError(404, "NOT_FOUND", f"步骤尚无成功产物: {step_type}")
+        art_dir = os.path.dirname(os.path.join(st.data_dir, att["output_ref"]))
+        safe = os.path.basename(name)  # 防穿越
+        path = os.path.join(art_dir, safe)
+        if not os.path.isfile(path):
+            raise ApiError(404, "NOT_FOUND", f"产物不存在: {safe}")
+        mime = {".png": "image/png", ".gif": "image/gif", ".wav": "audio/wav",
+                ".html": "text/html", ".json": "application/json"}.get(os.path.splitext(safe)[1], "application/octet-stream")
+        from fastapi.responses import FileResponse
+        return FileResponse(path, media_type=mime)
+
 
     @app.get("/api/tasks")
     def list_tasks(

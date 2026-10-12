@@ -2,6 +2,10 @@
 
 生成时间：2026-10-12 14:4x 与 15:2x-15:3x（CST）｜生成方式：真实进程运行 + CDP 无头浏览器截图，非 mock。
 
+## 真实素材与真实产物（新增）
+
+素材不再只是文件名：控制台「新建任务」可直接上传真实文件（PNG 按字节真实解码测亮度）；管线每步产出真实可打开的产物——parse_assets 出素材总览 PNG、analyze_scenes 出镜头亮度分布图（数值来自真实素材解析）、generate_clips/compose_video 出真实 GIF 动画、generate_audio 出可播放 WAV（音高由镜头亮度映射）、export_result 出自包含 HTML 报告（内嵌全部中间产物）。全部纯 Python 标准库实现（artifacts.py：自带 PNG 编解码/GIF LZW 压缩/WAV 合成），无外部 API、无 API key。每步详情展开即见「输入与处理统计 → 输出产物（可预览/下载）」。证据：08/09 截图 + e2e 脚本输出（亮图 0.76/暗图 0.16 实测亮度传导到镜头分析）。
+
 ## 长时间运行案例（新增，最有代表性）
 
 **docs/evidence/long_task_recovery_case.json + 07_long_task_recovery_detail.png**

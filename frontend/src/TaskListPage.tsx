@@ -27,8 +27,26 @@ export default function TaskListPage() {
   const [creating, setCreating] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [assetsText, setAssetsText] = useState('hero.png\nbg.png\nsfx.mp3')
+  const [uploadFiles, setUploadFiles] = useState<File[]>([])
   const [advancedJson, setAdvancedJson] = useState('')
   const { toast, ok, err } = useToast()
+
+  const onPickFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const list = Array.from(e.target.files ?? [])
+    setUploadFiles(list)
+    if (list.length > 0) {
+      setAssetsText(list.map((f) => f.name).join('\n'))
+    }
+  }
+
+  const uploadAll = async (taskId: string) => {
+    for (const f of uploadFiles) {
+      await fetch(`/api/tasks/${taskId}/assets?name=${encodeURIComponent(f.name)}`, {
+        method: 'POST', body: await f.arrayBuffer(),
+        headers: { 'Content-Type': 'application/octet-stream' },
+      })
+    }
+  }
 
   const load = useCallback(async () => {
     try {
@@ -59,11 +77,17 @@ export default function TaskListPage() {
         body = JSON.parse(advancedJson) as Record<string, unknown>
       } else {
         const assets = assetsText.split('\n').map((s) => s.trim()).filter(Boolean)
-        if (assets.length === 0) { err('至少输入一个素材文件名'); setCreating(false); return }
-        body = { input: { assets } }
+        if (assets.length === 0 && uploadFiles.length === 0) { err('至少输入一个素材文件名或选择上传文件'); setCreating(false); return }
+        body = { input: { assets: assets.length > 0 ? assets : ['placeholder.txt'] } }
       }
       const data = await api.createTask(body)
-      ok(`任务已创建：${data.task_id.slice(0, 8)}…`)
+      if (uploadFiles.length > 0) {
+        await uploadAll(data.task_id)
+        ok(`任务已创建，已上传 ${uploadFiles.length} 个真实素材文件`)
+        setUploadFiles([])
+      } else {
+        ok(`任务已创建：${data.task_id.slice(0, 8)}…`)
+      }
       setShowForm(false)
       setPage(1)
       await load()
@@ -96,6 +120,16 @@ export default function TaskListPage() {
             <div>
               <label className="small muted">素材文件（每行一个）</label>
               <textarea value={assetsText} onChange={(e) => setAssetsText(e.target.value)} style={{ marginTop: 4 }} />
+              <div style={{ marginTop: 8 }}>
+                <label className="small muted">或上传真实素材文件（PNG 会按字节真实解析）：</label>
+                <input type="file" multiple accept=".png,.jpg,.mp3,.wav,.txt,.mp4"
+                       onChange={onPickFiles} style={{ marginTop: 4, fontSize: 12 }} />
+                {uploadFiles.length > 0 && (
+                  <div className="small muted" style={{ marginTop: 4 }}>
+                    已选 {uploadFiles.length} 个：{uploadFiles.map((f) => f.name).join(', ')}
+                  </div>
+                )}
+              </div>
             </div>
             <div>
               <label className="small muted">高级：完整请求 JSON（可含 step_durations / fault_injection，会覆盖左侧）</label>

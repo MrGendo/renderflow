@@ -76,6 +76,26 @@ def task_faults_of(task_row) -> dict:
     return json.loads(task_row["input_json"]).get("fault_injection") or {}
 
 
+def merge_task_assets(conn, task_id: str, names: list[str]) -> None:
+    """把上传的真实素材文件名合并进任务 input.assets（幂等去重），单事务。
+
+    上传发生在创建之后、执行之前；merge 后 parse_assets 的输入即真实文件列表。
+    """
+    def _fn(c):
+        row = c.execute("SELECT input_json FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
+        payload = json.loads(row["input_json"])
+        assets = payload.get("input", {}).get("assets", [])
+        existing = {a if isinstance(a, str) else a.get("name") for a in assets}
+        for n in names:
+            if n not in existing:
+                assets.append(n)
+                existing.add(n)
+        payload.setdefault("input", {})["assets"] = assets
+        c.execute("UPDATE tasks SET input_json = ?, updated_at = ? WHERE task_id = ?",
+                  (json.dumps(payload, ensure_ascii=False, sort_keys=True), utcnow(), task_id))
+    return run_tx(conn, _fn)
+
+
 def get_task_summary(conn, task_id: str):
     return summarize_task(get_task(conn, task_id), list_steps(conn, task_id))
 

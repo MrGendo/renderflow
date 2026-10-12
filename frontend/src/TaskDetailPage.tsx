@@ -55,34 +55,88 @@ function DagView({ steps }: { steps: StepFull[] }) {
   )
 }
 
-function AttemptList({ stepId }: { stepId: string }) {
+function AttemptList({ stepId, taskId, stepType }: { stepId: string; taskId: string; stepType: string }) {
   const [attempts, setAttempts] = useState<Attempt[] | null>(null)
+  const [output, setOutput] = useState<Record<string, unknown> | null>(null)
   useEffect(() => {
     let alive = true
     api.getAttempts(stepId).then((d) => { if (alive) setAttempts(d) }).catch(() => { if (alive) setAttempts([]) })
     return () => { alive = false }
   }, [stepId])
+  // 取最新成功 attempt 的 output.json 内容（输入摘要/处理统计/产物清单）
+  useEffect(() => {
+    if (!attempts || attempts.length === 0) return
+    const ok = [...attempts].reverse().find((a) => a.status === 'SUCCEEDED')
+    if (!ok || !ok.output_ref) { setOutput(null); return }
+    fetch(`/api/tasks/${taskId}/artifacts/${stepType}/output.json`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => setOutput(j))
+      .catch(() => setOutput(null))
+  }, [attempts, taskId, stepType])
   if (attempts === null) return <div className="small muted">加载尝试历史…</div>
   if (attempts.length === 0) return <div className="small muted">尚无执行尝试</div>
+  const payload = (output?.mock_payload ?? null) as Record<string, unknown> | null
+  const artFiles = (payload?.art_files ?? null) as Record<string, string> | null
+  const assetUrl = (name: string) => `/api/tasks/${taskId}/artifacts/${stepType}/${encodeURIComponent(name)}`
   return (
-    <table className="tbl">
-      <thead>
-        <tr><th>#</th><th>attempt_id</th><th>worker</th><th>状态</th><th className="num">耗时</th><th>错误</th><th></th></tr>
-      </thead>
-      <tbody>
-        {attempts.map((a) => (
-          <tr key={a.attempt_id}>
-            <td className="num">{a.attempt_no}</td>
-            <td className="mono" title={a.attempt_id}>{a.attempt_id.slice(0, 8)}…</td>
-            <td className="mono" title={a.worker_id ?? ''}>{a.worker_id ? a.worker_id.split(':').slice(0, 2).join(':') : '—'}</td>
-            <td><StatusBadge status={a.status} /></td>
-            <td className="num">{fmtDuration(a.duration_ms)}</td>
-            <td className="small" title={a.error_message ?? ''}>{a.error_code ?? (a.status === 'SUCCEEDED' && (a.duration_ms ?? 1) === 0 ? '缓存命中' : '—')}</td>
-            <td><a href={`#/attempts/${a.attempt_id}`}>详情 →</a></td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div>
+      <table className="tbl">
+        <thead>
+          <tr><th>#</th><th>attempt_id</th><th>worker</th><th>状态</th><th className="num">耗时</th><th>错误</th><th></th></tr>
+        </thead>
+        <tbody>
+          {attempts.map((a) => (
+            <tr key={a.attempt_id}>
+              <td className="num">{a.attempt_no}</td>
+              <td className="mono" title={a.attempt_id}>{a.attempt_id.slice(0, 8)}…</td>
+              <td className="mono" title={a.worker_id ?? ''}>{a.worker_id ? a.worker_id.split(':').slice(0, 2).join(':') : '—'}</td>
+              <td><StatusBadge status={a.status} /></td>
+              <td className="num">{fmtDuration(a.duration_ms)}</td>
+              <td className="small" title={a.error_message ?? ''}>{a.error_code ?? (a.status === 'SUCCEEDED' && (a.duration_ms ?? 1) === 0 ? '缓存命中' : '—')}</td>
+              <td><a href={`#/attempts/${a.attempt_id}`}>详情 →</a></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {/* 输入 → 处理 → 输出 */}
+      {payload && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 10 }}>
+          <div>
+            <div className="small muted" style={{ marginBottom: 4 }}>■ 输入与处理统计（真实解析）</div>
+            <pre className="mono small" style={{
+              background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8,
+              padding: 8, margin: 0, maxHeight: 180, overflow: 'auto', whiteSpace: 'pre-wrap',
+            }}>{JSON.stringify(Object.fromEntries(Object.entries(payload).filter(([k]) => k !== 'art_files')), null, 1).slice(0, 900)}</pre>
+          </div>
+          <div>
+            <div className="small muted" style={{ marginBottom: 4 }}>■ 输出产物（真实文件，可预览/下载）</div>
+            {artFiles && Object.keys(artFiles).length > 0 ? (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                {Object.entries(artFiles).map(([name, note]) => {
+                  const url = assetUrl(name)
+                  const ext = name.split('.').pop()?.toLowerCase()
+                  return (
+                    <div key={name} style={{ width: 200, border: '1px solid var(--border)', borderRadius: 8, padding: 8 }}>
+                      {ext === 'png' || ext === 'gif' ? (
+                        <a href={url} target="_blank" rel="noreferrer"><img src={url} alt={name} style={{ width: '100%', borderRadius: 6, border: '1px solid var(--border)' }} /></a>
+                      ) : ext === 'wav' ? (
+                        <audio controls style={{ width: '100%' }} src={url} />
+                      ) : ext === 'html' ? (
+                        <a className="btn small" href={url} target="_blank" rel="noreferrer">打开 HTML 报告 ↗</a>
+                      ) : (
+                        <a className="btn small" href={url}>下载</a>
+                      )}
+                      <div className="mono small" style={{ marginTop: 6, wordBreak: 'break-all' }}>{name}</div>
+                      <div className="small muted">{note}</div>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : <div className="small muted">无产物文件</div>}
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -239,7 +293,7 @@ export default function TaskDetailPage({ taskId }: { taskId: string }) {
                                 <div className="small muted" style={{ marginBottom: 6 }}>
                                   执行尝试历史（{s.step_type}）· input_hash <span className="mono">{s.input_hash.slice(0, 12)}…</span> · step_version {s.step_version}
                                 </div>
-                                <AttemptList stepId={s.step_id} />
+                                <AttemptList stepId={s.step_id} taskId={taskId} stepType={s.step_type} />
                               </div>
                             </td>
                           </tr>

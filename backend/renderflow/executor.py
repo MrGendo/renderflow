@@ -1,16 +1,24 @@
-"""MOCK 步骤执行器：分片 sleep + 由 input_hash 种子生成的确定性伪输出。
+"""MOCK 步骤执行器：分片 sleep + 确定性输出 + 真实产物文件（PNG/GIF/WAV/HTML）。
 
 W2 增量：故障注入（fail_first_n_attempts/always_fail/timeout_after_s/crash_worker）、
 步骤超时熔断、控制流异常（LeaseLostError/StepCancelledError）直接上抛给 Worker。
+产物增量（真实素材交付）：每步在 attempt 目录产出真实可打开的产物文件——
+parse_assets 解码上传的真实 PNG 字节；analyze_scenes 出镜头亮度统计 PNG；
+generate_clips 出真实 GIF 动画帧；generate_audio 出真实可播放 WAV；
+compose_video 出逐帧合成 GIF；export_result 出 HTML 报告（内嵌全部产物）。
+产物由 input_hash 种子 + 真实统计值共同决定：确定性不变（缓存/复测仍成立），
+内容与输入真实相关（不同素材 → 不同亮度/时长 → 不同图/音）。
+全部纯标准库实现（artifacts.py），无外部 API、无 API key。
 """
 
+import base64
 import os
 import random
 import time
 from dataclasses import dataclass, field
 from typing import Callable
 
-from . import storage, workflow
+from . import artifacts, storage, workflow
 from .exceptions import LeaseLostError, StepCancelledError
 
 _TICK_S = 0.1  # 分片时长：100ms，片间隙是心跳/取消/中止检查点
@@ -30,6 +38,7 @@ class StepContext:
     data_dir: str
     timeout_s: float = 30.0  # 步骤超时熔断（spec.timeout_s）
     faults: dict = field(default_factory=dict)  # 该步骤的故障注入配置
+    upload_dir: str = ""  # 任务上传的真实素材目录（data/uploads/<task_id>）
 
 
 @dataclass
@@ -50,34 +59,131 @@ def _names(assets: list) -> list[str]:
 
 
 def _mock_payload(ctx: StepContext) -> dict:
-    """按步骤类型生成不同的确定性伪内容。"""
+    """按步骤类型生成不同的确定性伪内容 + 真实产物文件。"""
     rng = _rand(ctx.input_hash)
     cfg = workflow.get_step_spec(ctx.step_type).config
+    art_dir = os.path.join(ctx.data_dir, storage.attempt_dir_rel(
+        ctx.task_id, ctx.step_type, ctx.attempt_no))
+    os.makedirs(art_dir, exist_ok=True)
+    art_files: dict[str, str] = {}  # 文件名 → 说明（前端展示用）
+
+    def save(name: str, data: bytes, note: str) -> None:
+        with open(os.path.join(art_dir, name), "wb") as f:
+            f.write(data)
+        art_files[name] = note
+
     if ctx.step_type == "parse_assets":
+        # 真实处理：读取上传的素材文件，统计字节数；对 PNG 做真实解码测亮度
         names = _names(ctx.inputs.get("assets", []))
-        return {"asset_names": names, "asset_count": len(names)}
+        stats = []
+        for name in names:
+            path = os.path.join(ctx.upload_dir, name)
+            entry = {"name": name, "exists": os.path.isfile(path),
+                     "bytes": os.path.getsize(path) if os.path.isfile(path) else 0}
+            if entry["exists"] and name.lower().endswith(".png"):
+                try:
+                    with open(path, "rb") as f:
+                        w, h, pix = artifacts.png_decode(f.read())
+                    it = pix()
+                    sampled = [sum(next(it)) / 765.0 for _ in range(min(400, w * h))]
+                    entry.update({"kind": "png", "width": w, "height": h,
+                                  "mean_brightness": round(sum(sampled) / len(sampled), 4)})
+                except Exception as e:
+                    entry["decode_error"] = repr(e)[:80]
+            else:
+                entry["kind"] = name.rsplit(".", 1)[-1] if "." in name else "bin"
+            stats.append(entry)
+        # 产物：上传素材总览图（每素材一行，条长=文件大小占比）
+        sizes = [min(s["bytes"] / 65536.0, 1.0) for s in stats] or [0.5]
+        save("assets_overview.png", artifacts.bar_chart_png(sizes), "素材大小总览")
+        return {"asset_names": names, "asset_count": len(names), "asset_stats": stats,
+                "art_files": art_files}
     if ctx.step_type == "analyze_scenes":
         n = int(cfg["scene_count"])
-        return {
-            "scene_ids": [f"scene_{rng.randrange(1 << 32):08x}" for _ in range(n)],
-            "cut_points": sorted(rng.randrange(1000, 9000) for _ in range(n - 1)),
-        }
+        # 真实亮度驱动切分：用上游 parse 统计的素材平均亮度扰动种子
+        brightness = [a.get("mean_brightness") for a in ctx.inputs.get("parsed_assets", {}).get("asset_stats", []) if a.get("mean_brightness") is not None]
+        base_b = sum(brightness) / len(brightness) if brightness else 0.5
+        scene_ids = [f"scene_{rng.randrange(1 << 32):08x}" for _ in range(n)]
+        cut_points = sorted(rng.randrange(1000, 9000) for _ in range(n - 1))
+        lum = [round(min(1.0, max(0.05, base_b + rng.uniform(-0.2, 0.2))), 3) for _ in range(n)]
+        save("scene_brightness.png", artifacts.bar_chart_png(lum), "镜头亮度分布（来自真实素材统计）")
+        return {"scene_ids": scene_ids, "cut_points": cut_points, "scene_luminance": lum,
+                "art_files": art_files}
     if ctx.step_type == "generate_clips":
-        n = int(cfg["clips_per_scene"]) * len(ctx.inputs.get("scenes", {}).get("scene_ids", []))
-        return {
-            "clip_ids": [f"clip_{rng.randrange(1 << 32):08x}" for _ in range(max(n, 1))],
-            "durations_s": [round(rng.uniform(1.0, 5.0), 2) for _ in range(max(n, 1))],
-        }
+        scenes = ctx.inputs.get("scenes", {})
+        lum: list[float] = scenes.get("scene_luminance") or [0.5]
+        n = int(cfg["clips_per_scene"]) * len(scenes.get("scene_ids", []))
+        clip_ids = [f"clip_{rng.randrange(1 << 32):08x}" for _ in range(max(n, 1))]
+        durations_s = [round(rng.uniform(1.0, 5.0), 2) for _ in range(max(n, 1))]
+        # 真实产物：GIF 动画，每镜头一帧，帧亮度=真实镜头亮度
+        def frame_fn(lv: float):
+            def f(x: int, y: int) -> tuple[int, int, int]:
+                return (int(30 + 180 * lv * x / 63), int(30 + 120 * (1 - lv) * y / 47), 90)
+            return f
+        frames: list = [frame_fn(lum[i % len(lum)]) for i in range(max(n, 1))]
+        save("clips_preview.gif", artifacts.gif_encode(64, 48, frames, delay_ms=250),
+             f"{len(frames)} 帧动画预览（帧亮度=镜头真实亮度）")
+        return {"clip_ids": clip_ids, "durations_s": durations_s, "art_files": art_files}
     if ctx.step_type == "generate_audio":
-        count = len(ctx.inputs.get("scenes", {}).get("scene_ids", [])) or 1
+        scenes = ctx.inputs.get("scenes", {})
+        count = len(scenes.get("scene_ids", [])) or 1
+        lum: list[float] = scenes.get("scene_luminance") or [0.5]
         tracks = [round(rng.uniform(2.0, 10.0), 2) for _ in range(count)]
-        return {"track_count": count, "track_durations_s": tracks, "sample_rate": cfg["sample_rate"]}
+        # 真实产物：可播放 WAV，音高由镜头亮度映射（亮→高音）。
+        # 性能：产物用 16kHz、每段 ≤0.8s、总长 ≤3.2s——纯 Python 合成的合理预算
+        art_sr = 16000
+        mixed: list[int] = []
+        for i in range(count):
+            seg = artifacts.tone_samples(seed=rng.randrange(1 << 30), sample_rate=art_sr,
+                                          duration_s=min(tracks[i], 0.8),
+                                          base_freq=180.0 + 260.0 * lum[i % len(lum)])
+            mixed.extend(seg)
+        save("audio_track.wav", artifacts.wav_encode(art_sr, mixed[: art_sr * 4]),
+             "可播放音轨（音高由真实镜头亮度映射）")
+        return {"track_count": count, "track_durations_s": tracks, "sample_rate": cfg["sample_rate"], "art_files": art_files}
     if ctx.step_type == "compose_video":
-        frames = int(cfg["fps"]) * 2
-        return {"fps": cfg["fps"], "frame_count": frames, "codec": "mock-h264",
-                "render_seed": rng.randrange(1 << 32)}
+        frame_count = int(cfg["fps"]) * 2
+        clips = ctx.inputs.get("clips", {})
+        durs = clips.get("durations_s") or [2.0]
+        # 真实产物：合成 GIF——帧数按各 clip 真实时长；颜色预量化到 ≤64 色避免逐像素最近色搜索
+        fns: list = []
+        for i, d in enumerate(durs[:4]):
+            for k in range(max(1, min(int(d * 2), 2))):
+                seed = (i + 1) * 131 + k * 7
+                def fn(x: int, y: int, s=seed) -> tuple[int, int, int]:
+                    r = ((s * 5 + x * 3) % 256) // 64 * 64
+                    g = ((s * 7 + y * 5) % 256) // 64 * 64
+                    b = ((s * 11 + (x + y)) % 256) // 64 * 64
+                    return r, g, b
+                fns.append(fn)
+        save("composed.gif", artifacts.gif_encode(64, 48, fns[:8], delay_ms=150),
+             f"合成预览（{len(fns)} 帧，帧数按各 clip 真实时长）")
+        return {"fps": cfg["fps"], "frame_count": frame_count, "codec": "gif-preview",
+                "render_seed": rng.randrange(1 << 32), "art_files": art_files}
     if ctx.step_type == "export_result":
-        return {"format": cfg["format"], "size_bytes": rng.randrange(1024, 1 << 20)}
+        # 真实产物：自包含 HTML 报告，内嵌本任务全部前序产物（base64）
+        video = ctx.inputs.get("video", {})
+        parts = []
+        task_dir = os.path.join(ctx.data_dir, "tasks", ctx.task_id, "steps")
+        for st, fname_hint in (("parse_assets", "assets_overview.png"),
+                                ("analyze_scenes", "scene_brightness.png"),
+                                ("generate_clips", "clips_preview.gif"),
+                                ("generate_audio", "audio_track.wav"),
+                                ("compose_video", "composed.gif")):
+            p = os.path.join(task_dir, st, "attempt_1", fname_hint)
+            if os.path.isfile(p):
+                b64 = base64.b64encode(open(p, "rb").read()).decode()
+                mime = "image/png" if p.endswith(".png") else ("image/gif" if p.endswith(".gif") else "audio/wav")
+                if mime == "audio/wav":
+                    parts.append(f"<h3>{st}</h3><audio controls src='data:{mime};base64,{b64}'></audio>")
+                else:
+                    parts.append(f"<h3>{st}</h3><img style='max-width:640px' src='data:{mime};base64,{b64}'>")
+        html = f"""<!doctype html><html><head><meta charset='utf-8'><title>RenderFlow 导出报告 {ctx.task_id[:8]}</title>
+<style>body{{font-family:-apple-system,'PingFang SC',sans-serif;max-width:720px;margin:24px auto;padding:0 16px;background:#f7f8fa}}h1{{font-size:20px}}h3{{font-size:14px;color:#3563e9;margin:20px 0 6px}}img{{border-radius:8px;border:1px solid #e2e5ea}}</style>
+</head><body><h1>RenderFlow 导出报告</h1><p>task {ctx.task_id}<br>workflow export_result · {time.strftime('%Y-%m-%d %H:%M:%S')}</p>
+{''.join(parts)}</body></html>"""
+        save("export_report.html", html.encode(), "自包含 HTML 导出报告（内嵌全部中间产物）")
+        return {"format": "html-report", "size_bytes": len(html), "art_files": art_files}
     return {"seed": rng.randrange(1 << 32)}  # 兜底：未知步骤也给确定性输出
 
 
