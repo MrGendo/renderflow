@@ -1,4 +1,5 @@
 // 页面 C：执行尝试详情（全字段 + 事件表中的该次尝试执行记录 + 输出引用）
+// W5：改用 GET /api/attempts/{id} 直达（后端已补端点），不再遍历任务列表
 
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiRequestError } from './api'
@@ -6,7 +7,7 @@ import type { Attempt, TaskEvent } from './types'
 import { ErrorBanner, eventDotClass, fmtDuration, fmtTime, NotFound, SkeletonRows, StatusBadge } from './components'
 
 export default function AttemptDetailPage({ attemptId }: { attemptId: string }) {
-  const [attempt, setAttempt] = useState<Attempt | null>(null)
+  const [attempt, setAttempt] = useState<(Attempt & { task_id?: string }) | null>(null)
   const [events, setEvents] = useState<TaskEvent[] | null>(null)
   const [taskId, setTaskId] = useState('')
   const [notFound, setNotFound] = useState(false)
@@ -14,22 +15,12 @@ export default function AttemptDetailPage({ attemptId }: { attemptId: string }) 
 
   const load = useCallback(async () => {
     try {
-      // 尝试没有单独详情端点：从步骤的 attempts 列表里找（attemptId 全局唯一）
-      // 先通过事件反查太绕——直接遍历不可行；用 /api/tasks 列表逐个查太贵。
-      // 方案：后端未提供 GET /api/attempts/{id}，改为从 hash 路由携带 taskId 进入。
-      const listResp = await api.listTasks({ page: 1, pageSize: 100 })
-      let found: Attempt | null = null
-      outer: for (const t of listResp.items) {
-        const steps = await api.getSteps(t.task_id)
-        for (const s of steps) {
-          const atts = await api.getAttempts(s.step_id)
-          const hit = atts.find((a) => a.attempt_id === attemptId)
-          if (hit) { found = hit; setTaskId(t.task_id); break outer }
-        }
-      }
-      if (!found) { setNotFound(true); return }
-      setAttempt(found)
-      const evs = await api.getEvents(found.step_id ? (await taskIdOf(found)) : '', 1000).catch(() => [] as TaskEvent[])
+      const a = await api.getAttempt(attemptId)
+      setAttempt(a)
+      setTaskId(a.task_id ?? '')
+      const evs = a.task_id
+        ? await api.getEvents(a.task_id, 1000).catch(() => [] as TaskEvent[])
+        : ([] as TaskEvent[])
       setEvents(evs.filter((e) => e.attempt_id === attemptId))
       setError('')
     } catch (e2) {
@@ -37,16 +28,6 @@ export default function AttemptDetailPage({ attemptId }: { attemptId: string }) 
       else setError(e2 instanceof ApiRequestError ? `${e2.code}: ${e2.message}` : String(e2))
     }
   }, [attemptId])
-
-  async function taskIdOf(a: Attempt): Promise<string> {
-    if (taskId) return taskId
-    const list = await api.listTasks({ page: 1, pageSize: 100 })
-    for (const t of list.items) {
-      const steps = await api.getSteps(t.task_id)
-      if (steps.some((s) => s.step_id === a.step_id)) { setTaskId(t.task_id); return t.task_id }
-    }
-    return ''
-  }
 
   useEffect(() => { void load() }, [load])
 

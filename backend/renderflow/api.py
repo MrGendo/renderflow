@@ -236,6 +236,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise ApiError(404, "NOT_FOUND", f"步骤不存在: {step_id}")
         return ok([_attempt_json(a) for a in dao.list_attempts(_conn(), step_id)])
 
+    @app.get("/api/attempts/{attempt_id}")
+    def get_attempt(attempt_id: str):
+        """单次尝试详情（含所在 task_id，供前端尝试详情页直达）。"""
+        row = _conn().execute(
+            "SELECT a.*, s.task_id AS task_id FROM step_attempts a"
+            " JOIN task_steps s ON s.step_id = a.step_id WHERE a.attempt_id = ?",
+            (attempt_id,),
+        ).fetchone()
+        if row is None:
+            raise ApiError(404, "NOT_FOUND", f"执行尝试不存在: {attempt_id}")
+        return ok(_attempt_json(row) | {"task_id": row["task_id"]})
+
     @app.post("/api/steps/{step_id}/retry")
     def retry_step(step_id: str):
         """手动重试：FAILED/RETRY_WAIT → READY，attempt_count 归零（历史保留）。

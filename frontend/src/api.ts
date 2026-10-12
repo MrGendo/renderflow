@@ -56,6 +56,8 @@ export const api = {
   getTask: (id: string) => request<import('./types').TaskDetail>(`/api/tasks/${id}`),
   getSteps: (taskId: string) => request<import('./types').StepFull[]>(`/api/tasks/${taskId}/steps`),
   getAttempts: (stepId: string) => request<import('./types').Attempt[]>(`/api/steps/${stepId}/attempts`),
+  getAttempt: (attemptId: string) =>
+    request<import('./types').Attempt & { task_id: string }>(`/api/attempts/${attemptId}`),
   getEvents: (taskId: string, limit = 100) =>
     request<import('./types').TaskEvent[]>(`/api/tasks/${taskId}/events?limit=${limit}`),
   createTask: (body: unknown) =>
