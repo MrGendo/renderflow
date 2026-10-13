@@ -8,14 +8,20 @@ import {
   SkeletonRows, StatusBadge, Toast, usePolling, useToast,
 } from './components'
 
-/** 6 节点 DAG 布局（列 x, 行 y），节点 150px 宽 */
-const DAG_POS: Record<string, [number, number]> = {
-  parse_assets: [240, 10],
-  analyze_scenes: [240, 75],
-  generate_clips: [110, 150],
-  generate_audio: [370, 150],
-  compose_video: [240, 225],
-  export_result: [240, 288],
+/** 6 节点 DAG 分层布局：层号 → y；同层左右分列。节点 170×54，层距 92px 不重叠 */
+const DAG_LAYOUT: Record<string, { layer: number; col: number }> = {
+  parse_assets: { layer: 0, col: 0 },
+  analyze_scenes: { layer: 1, col: 0 },
+  generate_clips: { layer: 2, col: -1 },
+  generate_audio: { layer: 2, col: 1 },
+  compose_video: { layer: 3, col: 0 },
+  export_result: { layer: 4, col: 0 },
+}
+const NODE_W = 170, NODE_H = 54, LAYER_H = 92
+const dagXY = (t: string): [number, number] => {
+  const { layer, col } = DAG_LAYOUT[t]
+  const cx = 300 + col * (NODE_W + 40)   // 中心列 x=300
+  return [cx - NODE_W / 2, 20 + layer * LAYER_H]
 }
 const EDGES: [string, string][] = [
   ['parse_assets', 'analyze_scenes'],
@@ -28,20 +34,37 @@ const EDGES: [string, string][] = [
 
 function DagView({ steps }: { steps: StepFull[] }) {
   const byType = useMemo(() => new Map(steps.map((s) => [s.step_type, s])), [steps])
+  const maxLayer = Math.max(...Object.values(DAG_LAYOUT).map((l) => l.layer))
+  const height = 20 + (maxLayer + 1) * LAYER_H
   return (
     <div className="dag-wrap">
-      <div className="dag">
-        {EDGES.map(([from, to]) => {
-          const [x1, y1] = DAG_POS[from]; const [x2, y2] = DAG_POS[to]
-          const w = Math.hypot(x2 + 75 - (x1 + 75), y2 - y1)
-          const ang = (Math.atan2(y2 - y1, x2 + 75 - (x1 + 75)) * 180) / Math.PI
-          return <div key={`${from}->${to}`} className="dag-edge" style={{ left: x1 + 75, top: y1 + 42, width: w, transform: `rotate(${ang}deg)` }} />
-        })}
-        {Object.entries(DAG_POS).map(([type, [x, y]]) => {
+      <div className="dag" style={{ height }}>
+        {/* SVG 连线层：节点下端口 → 上端口，三次贝塞尔；线色=源节点状态色 */}
+        <svg style={{ position: 'absolute', inset: 0, width: '100%', height, pointerEvents: 'none' }}>
+          {EDGES.map(([from, to]) => {
+            const [x1, y1] = dagXY(from); const [x2, y2] = dagXY(to)
+            const sx = x1 + NODE_W / 2, sy = y1 + NODE_H       // 源底部中心
+            const tx = x2 + NODE_W / 2, ty = y2                 // 目标顶部中心
+            const mid = (sy + ty) / 2
+            const src = byType.get(from)
+            const stroke = src?.status === 'SUCCEEDED' ? 'var(--succeed)'
+              : src?.status === 'FAILED' ? 'var(--fail)'
+                : src?.status === 'RUNNING' ? 'var(--run)' : 'var(--border)'
+            return (
+              <g key={`${from}->${to}`}>
+                <path d={`M ${sx} ${sy} C ${sx} ${mid}, ${tx} ${mid}, ${tx} ${ty - 4}`}
+                      fill="none" stroke={stroke} strokeWidth={2} />
+                <polygon points={`${tx - 4},${ty - 4} ${tx + 4},${ty - 4} ${tx},${ty + 2}`} fill={stroke} />
+              </g>
+            )
+          })}
+        </svg>
+        {Object.keys(DAG_LAYOUT).map((type) => {
           const s = byType.get(type)
           if (!s) return null
+          const [x, y] = dagXY(type)
           return (
-            <div key={type} className={`dag-node ${s.status}`} style={{ left: x, top: y }}>
+            <div key={type} className={`dag-node ${s.status}`} style={{ left: x, top: y, width: NODE_W, zIndex: 2 }}>
               <div className="name">{type}</div>
               <div className="st">
                 <StatusBadge status={s.status} />

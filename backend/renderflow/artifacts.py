@@ -185,8 +185,9 @@ def gif_encode(width: int, height: int, frames: list[Callable[[int, int], tuple[
     out += gct
     out += b"\x21\xFF\x0BNETSCAPE2.0\x03\x01\x00\x00\x00"  # 循环播放
     for idx in indexed_frames:
-        out += b"\x21\xF9\x04" + struct.pack("<HB", 0, 0)  # GCE
-        out += bytes([delay_ms // 10]) + b"\x00"  # delay(1/100s), no transparency
+        # GCE：块长 4 = packed(disposal=1 不叠加) + delay(2字节小端,1/100s) + 透明索引
+        delay_cs = max(1, delay_ms // 10)
+        out += b"\x21\xF9\x04" + bytes([0x04, delay_cs & 0xFF, (delay_cs >> 8) & 0xFF, 0x00]) + b"\x00"
         out += struct.pack("<HHHH", 0, 0, width, height)  # 图像描述符（局部无色表）
         out += bytes([0x08])  # LZW min code size
         data = _lzw_encode(idx, 8)
