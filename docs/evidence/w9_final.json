@@ -1,0 +1,30 @@
+{
+  "case": "30-min 62-asset drill final phase (clean proxy, manual retry after injected faults)",
+  "task_id": "b9d10dfa98774d5ca7759b47b2399a49",
+  "at": "2026-10-13 11:19:15",
+  "timeline": [
+    "[11:18:34] 任务 b9d10dfa",
+    "[11:18:34] 干净代理 :18995（纯转发）",
+    "[11:18:50] Worker pid=21673（代理 18995）",
+    "[11:18:50] analyze 当前: FAILED/INTERNAL_ERROR → 手动重试",
+    "[11:19:04]     [proxy]#1 real-GLM OK 1189B",
+    "[11:19:14] 终态: SUCCEEDED 6/6 | None",
+    "[11:19:14] 事件: REUSED×16 EXPIRED×3 RECOVERED×3 FENCED×0",
+    "[11:19:14] LLM 终局: real_model attempt#1 13024ms {'completion_tokens': 244, 'prompt_tokens': 2396, 'total_tokens': 2640}",
+    "[11:19:14] 场景描述: 城市夜景镜头，灯光璀璨，气氛宁静。 / 教室内部镜头，光线柔和，环境安静。 / 夜晚街景镜头，昏黄的路灯，增添一丝神秘感。 / 水面镜头，波光粼粼，宁静祥和。",
+    "[11:19:15] generate_clips: 8帧 animated=True",
+    "[11:19:15] compose_video: 8帧 animated=True",
+    "[11:19:15] HTML 报告 177790B"
+  ],
+  "final": "SUCCEEDED",
+  "proxy": {
+    "calls": 1,
+    "forwarded": 1
+  },
+  "events": {
+    "BATCH_REUSED": 16,
+    "LEASE_EXPIRED": 3,
+    "STEP_RECOVERED": 3,
+    "STEP_FENCED": 0
+  }
+}
