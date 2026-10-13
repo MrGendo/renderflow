@@ -14,6 +14,7 @@
 | ![30分钟长任务 DAG](docs/screenshots/longtask_dag.png) | **30 分钟长任务全景**（任务 b9d10dfa：62 张真·动漫素材 × 14 类，五故障演练后 6/6 SUCCEEDED，SVG 连线 DAG 全绿） |
 | ![批次进度](docs/screenshots/longtask_batches.png) | **批次检查点面板**——63 批逐行状态（DONE/复用），对应 task_batches 表；3 次 Worker 中断恢复中 16 批零重算 |
 | ![analyze_scenes LLM 面板](docs/screenshots/analyze_scenes_llm.png) | **真实 LLM 节点详情**——analyze_scenes 展开：llm_source=real_model / glm-4-flash / 2640 tokens / 场景描述（城市夜景/教室/水面，与素材逐一对应）+ 输入输出产物 |
+| ![parse_assets 输入输出](docs/screenshots/parse_assets_io.png) | **parse_assets 输入→输出全景**——62 张上传的原始动漫图网格（原图直出，含实测亮度标注）+ 每批缩略产物 + 真实解析统计（宽高/字节/亮度） |
 
 更多证据（LLM 真实调用 JSON、四轮故障演练、动漫全链路）见 [docs/evidence/](docs/evidence/README.md)。
 
