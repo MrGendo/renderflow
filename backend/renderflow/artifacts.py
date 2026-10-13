@@ -158,6 +158,35 @@ def _lzw_encode(indices: bytes, min_code_size: int = 8) -> bytes:
 
 def gif_encode(width: int, height: int, frames: list[Callable[[int, int], tuple[int, int, int]]],
                delay_ms: int = 300) -> bytes:
+    """多帧 GIF89a。优先 Pillow（工业级实现，QuickLook/预览严格解析器验证通过）；
+    无 Pillow 时降级自制 LZW 版本（已知存在部分解析器不兼容问题，仅开发调试用）。"""
+    try:
+        from PIL import Image
+    except ImportError:
+        return _gif_encode_pure(width, height, frames, delay_ms)
+    pil_frames = []
+    for fn in frames:
+        rgb = Image.new("RGB", (width, height))
+        rgb.putdata([fn(x, y) for y in range(height) for x in range(width)])
+        pil_frames.append(rgb)
+    out_frames = []
+    base = None
+    for rgb in pil_frames:
+        p = rgb.quantize(colors=256, method=Image.MEDIANCUT, dither=Image.NONE)
+        if base is None:
+            base = p
+        else:
+            out_frames.append(p)
+    import io
+    buf = io.BytesIO()
+    assert base is not None, "gif_encode 需要至少一帧"
+    base.save(buf, format="GIF", save_all=True, append_images=out_frames,
+              duration=max(20, delay_ms), loop=0, disposal=2, optimize=False)
+    return buf.getvalue()
+
+
+def _gif_encode_pure(width: int, height: int, frames: list[Callable[[int, int], tuple[int, int, int]]],
+                     delay_ms: int = 300) -> bytes:
     """多帧 GIF89a。自动收集全局 256 色调色板（不足时补灰阶）。"""
     # 收集颜色
     color_index: dict[tuple[int, int, int], int] = {}
@@ -183,7 +212,7 @@ def gif_encode(width: int, height: int, frames: list[Callable[[int, int], tuple[
     out += struct.pack("<HH", width, height)
     out += bytes([0xF7, 0, 0])  # GCT flag, 256 色, bg=0
     out += gct
-    out += b"\x21\xFF\x0BNETSCAPE2.0\x03\x01\x00\x00\x00"  # 循环播放
+    out += b"\x21\xFF\x0BNETSCAPE2.0\x03\x01\x00\x00" + b"\x00"  # 循环播放：子块[03 01 lo hi]+终结 00（共 18B，勿多写）
     for idx in indexed_frames:
         # GCE：块长 4 = packed(disposal=1 不叠加) + delay(2字节小端,1/100s) + 透明索引
         delay_cs = max(1, delay_ms // 10)
