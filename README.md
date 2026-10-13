@@ -7,6 +7,16 @@
 **运行证据**：[docs/evidence/](docs/evidence/README.md)——本地生产形态真实运行：8/8 检查通过（含真实 SIGKILL 恢复）+ 6 张界面截图 + Worker/API 日志（公网 Demo 待部署，见 SUBMISSION.md §10）
 **API 文档**（本地启动后）：http://127.0.0.1:8900/api/docs
 
+## 界面速览（真实任务截图，docs/screenshots/）
+
+| 截图 | 内容 |
+|---|---|
+| ![30分钟长任务 DAG](docs/screenshots/longtask_dag.png) | **30 分钟长任务全景**（任务 b9d10dfa：62 张真·动漫素材 × 14 类，五故障演练后 6/6 SUCCEEDED，SVG 连线 DAG 全绿） |
+| ![批次进度](docs/screenshots/longtask_batches.png) | **批次检查点面板**——63 批逐行状态（DONE/复用），对应 task_batches 表；3 次 Worker 中断恢复中 16 批零重算 |
+| ![analyze_scenes LLM 面板](docs/screenshots/analyze_scenes_llm.png) | **真实 LLM 节点详情**——analyze_scenes 展开：llm_source=real_model / glm-4-flash / 2640 tokens / 场景描述（城市夜景/教室/水面，与素材逐一对应）+ 输入输出产物 |
+
+更多证据（LLM 真实调用 JSON、四轮故障演练、动漫全链路）见 [docs/evidence/](docs/evidence/README.md)。
+
 > 状态标记：✅ 已实现并有自动化测试覆盖 | 🧪 已实现（演示脚本/冒烟验证）| 📋 仅有设计方案（未实现）
 > 一键验证：`make install && make test && make demo-all`
 
