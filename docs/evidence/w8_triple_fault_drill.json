@@ -1,0 +1,67 @@
+{
+  "case": "real anime assets long-task triple-fault drill (SIGKILL + LLM 401 + network hang)",
+  "task_id": "5e37051ea632408ebe16c5bde5ec80c6",
+  "at": "2026-10-13 10:31:43",
+  "assets": [
+    "char_1boy_7227860.jpg",
+    "char_1girl_7227855.jpg",
+    "char_1girl_7227859.jpg",
+    "item_sword_7227782.jpg",
+    "item_sword_7227847.jpg",
+    "scene_cityscape_7226801.jpg",
+    "scene_classroom_7170188.png",
+    "scene_classroom_7208992.jpg"
+  ],
+  "timeline": [
+    "[10:30:02] LLM 代理就绪 :18999（故障注入受控）",
+    "[10:30:02] 任务 5e37051e：8 张真·动漫素材（人物/道具/场景），批次间隔 8s",
+    "[10:30:02] F1 预备：Worker1 pid=19812",
+    "[10:30:11] F1 触发：已完成 [1, 2] 批 → SIGKILL Worker1",
+    "[10:30:11] F2 预备：LLM 代理装弹 1×401（API 失效），另装 1 次挂起 12s（网络超时）",
+    "[10:30:11] F1 恢复：Worker2 pid=19823 启动（批次复用 + LLM 将先经历 401→超时→成功）",
+    "[10:31:12]     [proxy] #1 → 401 注入（API 失效演练）剩 0",
+    "[10:31:13] F2 结果：analyze_scenes 状态 = FAILED（error=INVALID_INPUT）",
+    "[10:31:13] F2 恢复：API 已修好（401 弹药耗尽）→ 手动重试 analyze_scenes",
+    "[10:31:14]     [proxy] #2 → 挂起 12s（网络超时演练，客户端 timeout=10s）",
+    "[10:31:32]     [proxy] #3 → 转发真实 GLM 成功（累计 1）",
+    "[10:31:38]     [proxy] #4 → 转发真实 GLM 成功（累计 2）",
+    "[10:31:43] 终态: SUCCEEDED 6/6 | None",
+    "[10:31:43] 事件: BATCH_REUSED×2 LEASE_EXPIRED×2 STEP_RECOVERED×2 STEP_FENCED×1 STEP_RETRY_SCHEDULED×0",
+    "[10:31:43] 代理: 总调用 4 / 真实转发 2 / 401×2 / 超时×1",
+    "[10:31:43] 批次: [(1, 'DONE'), (2, 'DONE'), (3, 'DONE'), (4, 'DONE'), (5, 'DONE'), (6, 'DONE'), (7, 'DONE'), (8, 'DONE'), (9, 'DONE')]",
+    "[10:31:43] LLM 终局: source=real_model model=glm-4-flash attempt#1 9623ms tokens={'completion_tokens': 182, 'prompt_tokens': 473, 'total_tokens': 655}",
+    "[10:31:43] 场景描述: 城市风景镜头 / 教室内部镜头 / 教室内部镜头 / 剑道具镜头",
+    "[10:31:43] 产物 generate_clips: 8帧 animated=True QuickLook=OK",
+    "[10:31:43] 产物 compose_video: 8帧 animated=True QuickLook=OK",
+    "[10:31:43] HTML 报告: 170934B 含真实模型块=True"
+  ],
+  "final": "SUCCEEDED",
+  "proxy": {
+    "mode": "proxy",
+    "fail_401_left": 0,
+    "hang_once": false,
+    "calls": 4,
+    "forwarded": 2
+  },
+  "llm": {
+    "llm_attempt": 1,
+    "llm_duration_ms": 9623,
+    "llm_mode": "real",
+    "llm_model": "glm-4-flash",
+    "llm_output_summary": "城市风景镜头 | 教室内部镜头 | 教室内部镜头 …",
+    "llm_prompt_digest": "000247bf",
+    "llm_source": "real_model",
+    "llm_usage": {
+      "completion_tokens": 182,
+      "prompt_tokens": 473,
+      "total_tokens": 655
+    }
+  },
+  "events": {
+    "BATCH_REUSED": 2,
+    "LEASE_EXPIRED": 2,
+    "STEP_RECOVERED": 2,
+    "STEP_FENCED": 1,
+    "STEP_RETRY_SCHEDULED": 0
+  }
+}
